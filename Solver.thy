@@ -323,19 +323,19 @@ fun convert_inv :: "QBF \<Rightarrow> pcnf option" where
 "convert_inv (Ex x qbf) = map_option (\<lambda>p. add_existential_to_front x p) (convert_inv qbf)" |
 "convert_inv qbf = map_option (\<lambda>m. (Empty, m)) (convert_matrix_inv qbf)"
 
-(*
-(* Lemmas that are not needed at the moment *)
 lemma convert_add_all: "convert (add_universal_to_front x pcnf) = All x (convert pcnf)"
   by (induction rule: add_universal_to_front.induct) auto
 
+lemma convert_add_ex: "convert (add_existential_to_front x pcnf) = Ex x (convert pcnf)"
+  by (induction rule: add_existential_to_front.induct) auto
+
+(*
+(* Lemmas that are not needed at the moment *)
 lemma add_all_inv:
   assumes "convert_inv (convert pcnf) = Some pcnf"
   shows "convert_inv (convert (add_universal_to_front x pcnf))
         = Some (add_universal_to_front x pcnf)"
   using assms convert_add_all by simp
-
-lemma convert_add_ex: "convert (add_existential_to_front x pcnf) = Ex x (convert pcnf)"
-  by (induction rule: add_existential_to_front.induct) auto
 
 lemma add_ex_inv:
   assumes "convert_inv (convert pcnf) = Some pcnf"
@@ -440,6 +440,97 @@ lemma convert_cnf_p: "cnf_p (convert_matrix mat)"
 theorem convert_pcnf_p: "pcnf_p (convert pcnf)"
   using convert_cnf_p by (induction rule: convert.induct) auto
 
+(*** Proofs that there is a pcnf formula yielding any pcnf_p QBF formula ***)
+lemma convert_literal_p_ex:
+  assumes "literal_p lit"
+  shows "\<exists>l. convert_literal l = lit"
+proof -
+  have "\<exists>l. convert_literal l = Var x" for x using convert_literal.simps by blast
+  moreover have "\<exists>l. convert_literal l = Neg (Var x)" for x using convert_literal.simps by blast
+  ultimately show "\<exists>l. convert_literal l = lit"
+    using assms by (induction rule: literal_p.induct) auto
+qed
+
+lemma convert_clause_p_ex:
+  assumes "clause_p cl"
+  shows "\<exists>c. convert_clause c = cl"
+proof -
+  from assms obtain xs where 0: "Disj xs = cl" by (metis clause_p.elims(2))
+  hence "list_all literal_p xs" using assms by fastforce  
+  hence "\<exists>ys. map convert_literal ys = xs" using convert_literal_p_ex
+  proof (induction xs)
+    case Nil
+    show "\<exists>ys. map convert_literal ys = []" by simp
+  next
+    case (Cons x xs)
+    from this obtain ys where "map convert_literal ys = xs" by fastforce
+    moreover from Cons convert_literal_p_ex obtain y where "convert_literal y = x" by fastforce
+    ultimately have "map convert_literal (y # ys) = x # xs" by simp
+    thus "\<exists>ys. map convert_literal ys = x # xs" by (rule exI)
+  qed
+  thus "\<exists>c. convert_clause c = cl" using 0 by fastforce
+qed
+
+lemma convert_cnf_p_ex:
+  assumes "cnf_p mat"
+  shows "\<exists>m. convert_matrix m = mat"
+proof -
+  from assms obtain xs where 0: "Conj xs = mat" by (metis cnf_p.elims(2))
+  hence "list_all clause_p xs" using assms by fastforce
+  hence "\<exists>ys. map convert_clause ys = xs" using convert_clause_p_ex
+  proof (induction xs)
+    case Nil
+    show "\<exists>ys. map convert_clause ys = []" by simp
+  next
+    case (Cons x xs)
+    from this obtain ys where "map convert_clause ys = xs" by fastforce
+    moreover from Cons convert_literal_p_ex obtain y where "convert_clause y = x" by fastforce
+    ultimately have "map convert_clause (y # ys) = x # xs" by simp
+    thus "\<exists>ys. map convert_clause ys = x # xs" by (rule exI)
+  qed
+  thus "\<exists>m. convert_matrix m = mat" using 0 by fastforce
+qed
+
+theorem convert_pcnf_p_ex:
+  assumes "pcnf_p qbf"
+  shows "\<exists>pcnf. convert pcnf = qbf" using assms
+proof (induction qbf)
+  case (Var x)
+  hence False by simp
+  thus ?case by simp
+next
+  case (Neg qbf)
+  hence False by simp
+  thus ?case by simp
+next
+  case (Conj x)
+  hence "cnf_p (Conj x)" by simp
+  from this obtain m where "convert_matrix m = Conj x" using convert_cnf_p_ex by blast
+  hence "convert (Empty, m) = Conj x" by simp
+  thus "\<exists>pcnf. convert pcnf = Conj x" by (rule exI)
+next
+  case (Disj x)
+  hence False by simp
+  thus ?case by simp
+next
+  case (Ex x1a qbf)
+  from this obtain pcnf where "convert pcnf = qbf" by fastforce
+  hence "convert (add_existential_to_front x1a pcnf) = Ex x1a qbf" using convert_add_ex by simp
+  thus "\<exists>pcnf. convert pcnf = QBF.Ex x1a qbf" by (rule exI)
+next
+  case (All x1a qbf)
+  from this obtain pcnf where "convert pcnf = qbf" by fastforce
+  hence "convert (add_universal_to_front x1a pcnf) = All x1a qbf" using convert_add_all by simp
+  thus "\<exists>pcnf. convert pcnf = QBF.All x1a qbf" by (rule exI)
+qed
+
+(* range of convert *)
+theorem convert_range: "range convert = {p. pcnf_p p}"
+  using convert_pcnf_p convert_pcnf_p_ex by blast
+
+(* convert bijective on pcnf_p subset of QBF *)
+theorem convert_bijective_on: "bij_betw convert UNIV {p. pcnf_p p}"
+  by (simp add: bij_betw_def convert_injective convert_range)
 (* IDK, old stuff *)
 
 (*
