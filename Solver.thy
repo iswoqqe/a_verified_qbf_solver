@@ -147,6 +147,13 @@ value "qbf_semantics (\<lambda>x. False) test_qbf"
 value "qbf_semantics ((\<lambda>x. False)(2 := True)) test_qbf"
 value "qbf_semantics (((\<lambda>x. False)(2 := True))(1 := True)) test_qbf"
 
+(* Satisfiability *)
+definition satisfiable :: "QBF \<Rightarrow> bool" where
+"satisfiable qbf = (\<exists>I. qbf_semantics I qbf)"
+
+definition logically_eq :: "QBF \<Rightarrow> QBF \<Rightarrow> bool" where
+"logically_eq qbf1 qbf2 = (\<forall>I. qbf_semantics I qbf1 = qbf_semantics I qbf2)"
+
 (*** Conversion functions, left-inverses thereof, and proofs of the left-inverseness. ***)
 (* Convert literal *)
 fun convert_literal :: "literal \<Rightarrow> QBF" where
@@ -531,221 +538,610 @@ theorem convert_range: "range convert = {p. pcnf_p p}"
 (* convert bijective on pcnf_p subset of QBF *)
 theorem convert_bijective_on: "bij_betw convert UNIV {p. pcnf_p p}"
   by (simp add: bij_betw_def convert_injective convert_range)
-(* IDK, old stuff *)
 
-(*
-(* Old implementation, more difficult to create a provably correct left inverse for. *)
-fun convert_quant_all :: "quant_set \<Rightarrow> QBF \<Rightarrow> QBF" where
-"convert_quant_all (x, []) qbf = All x qbf" |
-"convert_quant_all (x, (y # ys)) qbf = All x (convert_quant_all (y, ys) qbf)"
+(*** Free Variables ***)
+fun free_variables_aux :: "nat set \<Rightarrow> QBF \<Rightarrow> nat list" where
+"free_variables_aux bound (Var x) = (if x \<in> bound then [] else [x])" |
+"free_variables_aux bound (Neg qbf) = free_variables_aux bound qbf" |
+"free_variables_aux bound (Conj list) = concat (map (free_variables_aux bound) list)" |
+"free_variables_aux bound (Disj list) = concat (map (free_variables_aux bound) list)" |
+"free_variables_aux bound (Ex x qbf) = free_variables_aux (bound \<union> {x}) qbf" |
+"free_variables_aux bound (All x qbf) = free_variables_aux (bound \<union> {x}) qbf"
 
-fun convert_quant_ex :: "quant_set \<Rightarrow> QBF \<Rightarrow> QBF" where
-"convert_quant_ex (x, []) qbf = Ex x qbf" |
-"convert_quant_ex (x, (y # ys)) qbf = Ex x (convert_quant_ex (y, ys) qbf)"
+fun free_variables :: "QBF \<Rightarrow> nat list" where
+"free_variables qbf = sort (remdups (free_variables_aux {} qbf))"
 
-fun convert_aux :: "bool \<Rightarrow> quant_sets \<Rightarrow> matrix \<Rightarrow> QBF" where
-"convert_aux _ [] matrix = convert_matrix matrix" |
-"convert_aux True (q # qs) matrix = convert_quant_all q (convert_aux False qs matrix)" |
-"convert_aux False (q # qs) matrix = convert_quant_ex q (convert_aux True qs matrix)"
+lemma bound_subtract_symmetry:
+  "set (free_variables_aux (bound \<union> new) qbf) = set (free_variables_aux bound qbf) - new"
+  by (induction bound qbf rule: free_variables_aux.induct) auto
 
-fun convert :: "pcnf \<Rightarrow> QBF" where
-"convert (UniversalFirst q qs, matrix) = convert_aux False (q # qs) matrix" |
-"convert (ExistentialFirst q qs, matrix) = convert_aux True (q # qs) matrix" |
-"convert (Empty, matrix) = convert_matrix matrix"
+lemma distinct_free_variables: "distinct (free_variables qbf)"
+  using distinct_remdups by simp
 
-fun rev_quant_set :: "'a \<times> 'a list \<Rightarrow> 'a \<times> 'a list" where
-"rev_quant_set (x, xs) = (let r = rev (x # xs) in (hd r, tl r))"
+lemma sorted_free_variables: "sorted (free_variables qbf)"
+  by simp
 
-theorem rev_rev_quant_set: "rev_quant_set (rev_quant_set q) = q"
-  by (induction q) (auto simp add: Let_def)
+lemma free_Cons_eq_free_ex_tl:
+  assumes "free_variables qbf = x # xs"
+  shows "free_variables (Ex x qbf) = xs"
+proof -
+  have "set xs = set (sort (remdups (free_variables_aux {} qbf))) - {x}"
+    using assms distinct_free_variables[of qbf] by simp
+  moreover have "set (free_variables (Ex x qbf)) = set (remdups (free_variables_aux {} qbf)) - {x}"
+    using bound_subtract_symmetry[of "{}" "{x}" qbf] by simp
+  ultimately have "set (free_variables (Ex x qbf)) = set xs" by simp
+  moreover have "sorted xs" using assms sorted_free_variables sorted_simps(2) by metis
+  moreover have "distinct xs" using assms distinct_free_variables distinct.simps(2) by metis
+  moreover have "sorted (free_variables (Ex x qbf))" using sorted_free_variables by simp
+  moreover have "distinct (free_variables (Ex x qbf))" using distinct_free_variables by simp
+  ultimately show ?thesis using sorted_distinct_set_unique by blast
+qed
 
-fun reverse_prefix :: "prefix \<Rightarrow> prefix" where
-"reverse_prefix Empty = Empty" |
-"reverse_prefix (UniversalFirst x xs) =
-  (let r = rev (map rev_quant_set (x # xs))
-   in if even (length r)
-        then (ExistentialFirst (hd r) (tl r))
-        else (UniversalFirst (hd r) (tl r)))" |
-"reverse_prefix (ExistentialFirst x xs) =
-  (let r = rev (map rev_quant_set (x # xs))
-   in if even (length r)
-        then (UniversalFirst (hd r) (tl r))
-        else (ExistentialFirst (hd r) (tl r)))"
+(*** Existential Closure ***)
+fun existential_closure_aux :: "QBF \<Rightarrow> nat list \<Rightarrow> QBF" where
+"existential_closure_aux qbf Nil = qbf" |
+"existential_closure_aux qbf (Cons x xs) = Ex x (existential_closure_aux qbf xs)"
 
-fun convert_alt_inv_aux :: "QBF \<Rightarrow> prefix \<Rightarrow> pcnf option" where
-"convert_alt_inv_aux (All x qbf) Empty = convert_alt_inv_aux qbf (UniversalFirst (x, []) [])" |
-"convert_alt_inv_aux (Ex x qbf) Empty = convert_alt_inv_aux qbf (ExistentialFirst (x, []) [])" |
-"convert_alt_inv_aux (All x qbf) (UniversalFirst (y, ys) qs) =
-  convert_alt_inv_aux qbf (UniversalFirst (x, y # ys) qs)" |
-"convert_alt_inv_aux (Ex x qbf) (UniversalFirst (y, ys) qs) =
-  convert_alt_inv_aux qbf (ExistentialFirst (x, []) (rev_quant_set (y, ys) # qs))" |
-"convert_alt_inv_aux (All x qbf) (ExistentialFirst (y, ys) qs) =
-  convert_alt_inv_aux qbf Empty
-(*  convert_alt_inv_aux qbf (UniversalFirst (x, []) (rev_quant_set (y, ys) # qs))" |*)
-"convert_alt_inv_aux (Ex x qbf) (ExistentialFirst (y, ys) qs) =
-  convert_alt_inv_aux qbf (ExistentialFirst (x, y # ys) qs)" |
-"convert_alt_inv_aux qbf Empty = map_option (\<lambda>x. (Empty, x)) (convert_matrix_inv qbf)" |
-"convert_alt_inv_aux qbf (UniversalFirst q qs) =
-  map_option (\<lambda>x. (UniversalFirst (rev_quant_set q) qs, x)) (convert_matrix_inv qbf)" |
-"convert_alt_inv_aux qbf (ExistentialFirst q qs) =
-  map_option (\<lambda>x. (ExistentialFirst (rev_quant_set q) qs, x)) (convert_matrix_inv qbf)"
+fun existential_closure :: "QBF \<Rightarrow> QBF" where
+"existential_closure qbf = existential_closure_aux qbf (free_variables qbf)"
 
-
-fun convert_alt_inv :: "QBF \<Rightarrow> pcnf option" where
-"convert_alt_inv qbf = convert_alt_inv_aux qbf Empty"
-
-value "convert_alt (UniversalFirst (0, []) [(0, [])], [])"
-
-theorem convert_inv: "convert_alt_inv (convert_alt pcnf) = Some pcnf"
-*)
-
-(*
-(* pcnf_p after conversion proof: *)
-lemma pcnf_convert_quant_all: "pcnf_p qbf \<Longrightarrow> pcnf_p (convert_quant_all (x, ys) qbf)"
-  apply (induction qbf rule: convert_quant_all.induct)
-  by auto
-
-lemma pcnf_convert_quant_ex: "pcnf_p qbf \<Longrightarrow> pcnf_p (convert_quant_ex (x, ys) qbf)"
-  apply (induction qbf rule: convert_quant_ex.induct)
-  by auto
-
-lemma cnf_convert_matrix: "cnf_p (convert_matrix matrix)"
-proof (induction matrix)
-  case Nil
-  show "cnf_p (convert_matrix [])" by simp
+lemma ex_closure_vars_not_free:
+  "set (free_variables (existential_closure_aux qbf vars)) = set (free_variables qbf) - set vars"
+proof (induction qbf vars rule: existential_closure_aux.induct)
+  case (1 qbf)
+  then show ?case by simp
 next
-  case (Cons cl matrix)
-  hence "list_all clause_p (map convert_clause matrix)" by simp
-  moreover have "clause_p (convert_clause cl)"
-  proof (induction cl)
-    case Nil
-    show "clause_p (convert_clause [])" by simp
+  case (2 qbf x xs)
+  let ?close_xs = "existential_closure_aux qbf xs"
+  have "set (free_variables_aux {x} ?close_xs) = set (free_variables_aux {} ?close_xs) - {x}"
+    using bound_subtract_symmetry[of "{}" "{x}" ?close_xs] by simp
+  thus ?case using 2 by auto
+qed
+
+theorem ex_closure_no_free: "free_variables (existential_closure qbf) = []"
+proof -
+  have "set (free_variables (existential_closure_aux qbf (free_variables qbf))) = {}"
+    using ex_closure_vars_not_free by simp
+  thus ?thesis by simp
+qed
+
+lemma swap_substitute_var_order:
+  assumes "x1 \<noteq> x2 \<or> b1 = b2"
+  shows "substitute_var x1 b1 (substitute_var x2 b2 qbf)
+        = substitute_var x2 b2 (substitute_var x1 b1 qbf)"
+proof (induction qbf)
+  case (Var x)
+  show ?case
+  proof (cases b2)
+    case True
+    then show ?thesis using assms by (cases b1) auto
   next
-    case (Cons lit cl)
-    hence "list_all literal_p (map convert_literal cl)" by simp
-    moreover have "literal_p (convert_literal lit)"
-      by (induction rule: convert_literal.induct) auto
-    ultimately show "clause_p (convert_clause (lit # cl))" by simp
-  qed
-  ultimately show "cnf_p (convert_matrix (cl # matrix))" by simp
-qed
-
-lemma pcnf_convert_aux: "pcnf_p (convert_aux all quants matrix)"
-proof (induction all quants matrix rule: convert_aux.induct)
-  case (1 all matrix)
-  show "pcnf_p (convert_aux all [] matrix)" using cnf_convert_matrix by simp
-next
-  case (2 q qs matrix)
-  show "pcnf_p (convert_aux True (q # qs) matrix)"
-  proof (cases q)
-    case (Pair a b)
-    thus ?thesis using 2 pcnf_convert_quant_all by simp
+    case False
+    then show ?thesis using assms by (cases b1) auto
   qed
 next
-  case (3 q qs matrix)
-  show "pcnf_p (convert_aux False (q # qs) matrix)"
-  proof (cases q)
-    case (Pair a b)
-    thus ?thesis using 3 pcnf_convert_quant_ex by simp
+  case (Neg qbf)
+  then show ?case by simp
+next
+  case (Conj x)
+  then show ?case by simp
+next
+  case (Disj x)
+  then show ?case by simp
+next
+  case (Ex x1a qbf)
+  then show ?case by simp
+next
+  case (All x1a qbf)
+  then show ?case by simp
+qed
+
+lemma remove_outer_substitute_var:
+  assumes "x1 = x2"
+  shows "substitute_var x1 b1 (substitute_var x2 b2 qbf) = (substitute_var x2 b2 qbf)" using assms
+proof (induction qbf)
+  case (Var x)
+  show ?case
+  proof (cases b2)
+    case True
+    then show ?thesis using assms by (cases b1) auto
+  next
+    case False
+    then show ?thesis using assms by (cases b1) auto
+  qed
+next
+  case (Neg qbf)
+  thus ?case by simp
+next
+  case (Conj x)
+  thus ?case by simp
+next
+  case (Disj x)
+  thus ?case by simp
+next
+  case (Ex x1a qbf)
+  thus ?case by simp
+next
+  case (All x1a qbf)
+  thus ?case by simp
+qed
+
+lemma qbf_semantics_substitute_eq_assign:
+  "qbf_semantics I (substitute_var x b qbf) \<longleftrightarrow> qbf_semantics (I(x := b)) qbf"
+proof (induction "I(x := b)" qbf rule: qbf_semantics.induct)
+  case (1 z)
+  then show ?case by (cases b) auto
+next
+  case (2 qbf)
+  then show ?case by simp
+next
+  case (3 qbf_list)
+  then show ?case by (induction qbf_list) auto
+next
+  case (4 qbf_list)
+  then show ?case by (induction qbf_list) auto
+next
+  case (5 x' qbf)
+  thus ?case by (cases "x' = x")
+                (auto simp add: swap_substitute_var_order remove_outer_substitute_var)
+next
+  case (6 x' qbf)
+  thus ?case by (cases "x' = x")
+                (auto simp add: swap_substitute_var_order remove_outer_substitute_var)
+qed
+
+lemma sat_iff_ex_sat: "satisfiable qbf \<longleftrightarrow> satisfiable (Ex x qbf)"
+proof (cases "satisfiable qbf")
+  case True
+  from this obtain I where I_def: "qbf_semantics I qbf" unfolding satisfiable_def by blast
+  have "I(x := I x) = I(x := True) \<or> I(x := I x) = I(x := False)" by (cases "I x") auto
+  hence "I = I(x := True) \<or> I = I(x := False)" by simp
+  hence "qbf_semantics (I(x := True)) qbf \<or> qbf_semantics (I(x := False)) qbf"
+    using I_def by fastforce
+  moreover have "satisfiable (Ex x qbf)
+                = (\<exists>I. qbf_semantics (I(x := True)) qbf
+                  \<or> qbf_semantics (I(x := False)) qbf)"
+    by (simp add: satisfiable_def qbf_semantics_substitute_eq_assign)
+  ultimately have "satisfiable (QBF.Ex x qbf)" by blast
+  thus ?thesis using True by simp
+next
+  case False
+  thus ?thesis unfolding satisfiable_def using qbf_semantics_substitute_eq_assign by simp
+qed
+
+theorem sat_iff_ex_close_sat: "satisfiable qbf \<longleftrightarrow> satisfiable (existential_closure qbf)"
+proof -
+  have "satisfiable qbf = satisfiable (existential_closure_aux qbf (free_variables qbf))"
+  proof (induction qbf "free_variables qbf" arbitrary: qbf rule: existential_closure_aux.induct)
+    case (1 qbf)
+    thus ?case by simp
+  next
+    case (2 qbf x xs)
+    have free_qbf: "x # xs = free_variables qbf" by fact
+    have "xs = free_variables (Ex x qbf)" using 2 free_Cons_eq_free_ex_tl by metis
+    hence "satisfiable (Ex x qbf) = satisfiable (existential_closure_aux (Ex x qbf) xs)"
+      using 2 by simp
+    hence "satisfiable qbf = satisfiable (existential_closure_aux (Ex x qbf) xs)"
+      using sat_iff_ex_sat by simp
+    moreover have "satisfiable (existential_closure_aux (Ex x qbf) xs)
+                  = satisfiable (existential_closure_aux qbf (x # xs))"
+      using sat_iff_ex_sat by (induction "(Ex x qbf)" xs rule: existential_closure_aux.induct) auto
+    ultimately show "satisfiable qbf
+                    = satisfiable (existential_closure_aux qbf (free_variables qbf))"
+      using free_qbf by simp
+  qed
+  thus "satisfiable qbf = satisfiable (existential_closure qbf)" by simp
+qed
+
+(*** Naive solver ***)
+fun list_max :: "nat list \<Rightarrow> nat" where
+"list_max Nil = 0" |
+"list_max (Cons x xs) = max x (list_max xs)"
+
+fun qbf_quantifier_depth :: "QBF \<Rightarrow> nat" where
+"qbf_quantifier_depth (Var x) = 0" |
+"qbf_quantifier_depth (Neg qbf) = qbf_quantifier_depth qbf" |
+"qbf_quantifier_depth (Conj list) = list_max (map qbf_quantifier_depth list)" |
+"qbf_quantifier_depth (Disj list) = list_max (map qbf_quantifier_depth list)" |
+"qbf_quantifier_depth (Ex x qbf) = 1 + (qbf_quantifier_depth qbf)" |
+"qbf_quantifier_depth (All x qbf) = 1 + (qbf_quantifier_depth qbf)"
+
+lemma qbf_quantifier_depth_substitute:
+  "qbf_quantifier_depth (substitute_var z b qbf) = qbf_quantifier_depth qbf"
+proof (induction qbf)
+  case (Var x)
+  show ?case by (cases b) auto
+next
+  case (Neg qbf)
+  thus ?case by simp
+next
+  case (Conj xs)
+  thus ?case by (induction xs) auto
+next
+  case (Disj xs)
+  thus ?case by (induction xs) auto
+next
+  case (Ex x1a qbf)
+  thus ?case by simp
+next
+  case (All x1a qbf)
+  thus ?case by simp
+qed
+
+lemma qbf_quantifier_depth_eq_max:
+  assumes "\<not>qbf_quantifier_depth z < list_max (map qbf_quantifier_depth qbf_list)"
+  and "z \<in> set qbf_list"
+  shows "qbf_quantifier_depth z = list_max (map qbf_quantifier_depth qbf_list)" using assms
+proof (induction qbf_list)
+  case Nil
+  hence False by simp
+  thus ?case by simp
+next
+  case (Cons x xs)
+  thus "qbf_quantifier_depth z = list_max (map qbf_quantifier_depth (x # xs))"
+    by (cases "x = z") auto
+qed
+
+function expand_quantifiers :: "QBF \<Rightarrow> QBF" where
+"expand_quantifiers (Var x) = (Var x)" |
+"expand_quantifiers (Neg qbf) = Neg (expand_quantifiers qbf)" |
+"expand_quantifiers (Conj list) = Conj (map expand_quantifiers list)" |
+"expand_quantifiers (Disj list) = Disj (map expand_quantifiers list)" |
+"expand_quantifiers (Ex x qbf) = (Disj [substitute_var x True (expand_quantifiers qbf),
+                                        substitute_var x False (expand_quantifiers qbf)])" |
+"expand_quantifiers (All x qbf) = (Conj [substitute_var x True (expand_quantifiers qbf),
+                                         substitute_var x False (expand_quantifiers qbf)])"
+  by pat_completeness auto
+termination
+  apply (relation "measures [qbf_quantifier_depth, qbf_measure]")
+  by (auto simp add: qbf_quantifier_depth_substitute qbf_quantifier_depth_eq_max)
+     (auto simp add: qbf_measure_lt_sum_list)
+
+lemma semantics_inv_under_expand:
+  "qbf_semantics I qbf = qbf_semantics I (expand_quantifiers qbf)"
+proof (induction qbf arbitrary: I)
+  case (Var x)
+  show ?case by force
+next
+  case (Neg qbf)
+  thus ?case by simp
+next
+  case (Conj x)
+  thus ?case by (induction x) auto
+next
+  case (Disj x)
+  thus ?case by (induction x) auto
+next
+  case (Ex x1a qbf)
+  thus "qbf_semantics I (QBF.Ex x1a qbf) = qbf_semantics I (expand_quantifiers (QBF.Ex x1a qbf))"
+    using qbf_semantics_substitute_eq_assign by fastforce
+next
+  case (All x1a qbf)
+  thus "qbf_semantics I (QBF.All x1a qbf) = qbf_semantics I (expand_quantifiers (QBF.All x1a qbf))"
+    using qbf_semantics_substitute_eq_assign by fastforce
+qed
+
+lemma sat_iff_expand_quants_sat: "satisfiable qbf \<longleftrightarrow> satisfiable (expand_quantifiers qbf)"
+  unfolding satisfiable_def using semantics_inv_under_expand by simp
+
+lemma no_quants_after_expand_quants: "qbf_quantifier_depth (expand_quantifiers qbf) = 0"
+proof (induction qbf)
+  case (Var x)
+  show ?case by simp
+next
+  case (Neg qbf)
+  thus ?case by simp
+next
+  case (Conj x)
+  thus ?case by (induction x) auto
+next
+  case (Disj x)
+  thus ?case by (induction x) auto
+next
+  case (Ex x1a qbf)
+  thus ?case using qbf_quantifier_depth_substitute Ex.IH by simp
+next
+  case (All x1a qbf)
+  thus ?case using qbf_quantifier_depth_substitute All.IH by simp
+qed
+
+
+(*lemma expand_quants_subst_vars_comm:
+  "expand_quantifiers (substitute_var x b qbf) = substitute_var x b (expand_quantifiers qbf)"
+proof (induction qbf)
+  case (Var x)
+  then show ?case by (cases b) auto
+next
+  case (Neg qbf)
+  then show ?case by simp
+next
+  case (Conj x)
+  then show ?case by simp
+next
+  case (Disj x)
+  then show ?case by simp
+next
+  case (Ex x1a qbf)
+  show "expand_quantifiers (substitute_var x b (QBF.Ex x1a qbf))
+        = substitute_var x b (expand_quantifiers (QBF.Ex x1a qbf))"
+  proof (cases "x = x1a")
+    case True
+    thus ?thesis using Ex.IH remove_outer_substitute_var by simp
+  next
+    case False
+    thus ?thesis using Ex.IH swap_substitute_var_order by simp
+  qed
+next
+  case (All x1a qbf)
+  show "expand_quantifiers (substitute_var x b (QBF.All x1a qbf))
+        = substitute_var x b (expand_quantifiers (QBF.All x1a qbf))"
+  proof (cases "x = x1a")
+    case True
+    thus ?thesis using All.IH remove_outer_substitute_var by simp
+  next
+    case False
+    thus ?thesis using All.IH swap_substitute_var_order by simp
+  qed
+qed*)
+
+lemma set_free_vars_subst_all_eq:
+  "set (free_variables (substitute_var x b qbf)) = set (free_variables (All x qbf))"
+proof (induction x b qbf rule: substitute_var.induct)
+  case (1 z z')
+  then show ?case by simp
+next
+  case (2 z z')
+  then show ?case by simp
+next
+  case (3 z b qbf)
+  then show ?case by simp
+next
+  case (4 z b qbf_list)
+  then show ?case by simp
+next
+  case (5 z b qbf_list)
+  then show ?case by simp
+next
+  case (6 z b x qbf)
+  then show ?case
+  proof (cases "x = z")
+    case True
+    thus ?thesis by simp
+  next
+    case False
+    have 0: "set (free_variables_aux (s \<union> {x}) q) = set (free_variables_aux s q) - {x}" for q s
+      using bound_subtract_symmetry[where ?new = "{x}"] by simp
+    have "set (free_variables (substitute_var z b (QBF.Ex x qbf)))
+                   = set (free_variables (substitute_var z b qbf)) - {x}" using 0 False by simp
+    also have "... = set (free_variables (QBF.All z qbf)) - {x}" using 6 False by simp
+    also have "... = set (free_variables_aux {x, z} qbf)" using 0 by simp
+    also have "... = set (free_variables (QBF.All z (QBF.Ex x qbf)))" by simp
+    finally show ?thesis .
+  qed
+next
+  case (7 z b y qbf)
+  thus ?case
+  proof (cases "y = z")
+    case True
+    thus ?thesis by simp
+  next
+    case False (* Similar to case "6, False" *)
+    thus ?thesis using 7 bound_subtract_symmetry[where ?new = "{y}"] by simp
   qed
 qed
 
-theorem pcnf_convert: "pcnf_p (convert pcnf)"
-proof (induction rule: convert.induct)
-  case (1 q qs matrix)
-  have "pcnf_p (convert (UniversalFirst q qs, matrix)) = pcnf_p (convert_aux False (q # qs) matrix)"
-    by simp
-  thus "pcnf_p (convert (UniversalFirst q qs, matrix))" using pcnf_convert_aux by fastforce
+lemma set_free_vars_subst_ex_eq:
+  "set (free_variables (substitute_var x b qbf)) = set (free_variables (Ex x qbf))"
+proof (induction x b qbf rule: substitute_var.induct)
+  case (1 z z')
+  then show ?case by simp
 next
-  case (2 q qs matrix)
-  have "pcnf_p (convert (ExistentialFirst q qs, matrix)) = pcnf_p (convert_aux True (q # qs) matrix)"
-    by simp
-  thus "pcnf_p (convert (ExistentialFirst q qs, matrix))" using pcnf_convert_aux by fastforce
+  case (2 z z')
+  then show ?case by simp
 next
-  case (3 matrix)
-  thus "pcnf_p (convert (Empty, matrix))" using cnf_convert_matrix by simp
+  case (3 z b qbf)
+  then show ?case by simp
+next
+  case (4 z b qbf_list)
+  then show ?case by simp
+next
+  case (5 z b qbf_list)
+  then show ?case by simp
+next
+  case (6 z b x qbf)
+  then show ?case
+  proof (cases "x = z")
+    case True
+    thus ?thesis by simp
+  next
+    case False (* Similar to proof in set_free_vars_subst_all_eq *) 
+    thus ?thesis using 6 bound_subtract_symmetry[where ?new = "{x}"] by simp
+  qed
+next
+  case (7 z b y qbf)
+  thus ?case
+  proof (cases "y = z")
+    case True
+    thus ?thesis by simp
+  next
+    case False (* Similar to proof in set_free_vars_subst_all_eq *)
+    thus ?thesis using 7 bound_subtract_symmetry[where ?new = "{y}"] by simp
+  qed
 qed
 
-fun reverse_prefix :: "prefix \<Rightarrow> prefix" where
-"reverse_prefix Empty = Empty" |
-"reverse_prefix (UniversalFirst x xs) =
-  (let r = rev (x # xs)
-   in if even (length r)
-        then (ExistentialFirst (hd r) (tl r))
-        else (UniversalFirst (hd r) (tl r)))" |
-"reverse_prefix (ExistentialFirst x xs) =
-  (let r = rev (x # xs)
-   in if even (length r)
-        then (UniversalFirst (hd r) (tl r))
-        else (ExistentialFirst (hd r) (tl r)))"
-
-theorem reverse_reverse_prefix: "reverse_prefix (reverse_prefix prefix) = prefix"
-proof (induction rule: reverse_prefix.induct)
-  case 1
-  show "reverse_prefix (reverse_prefix Empty) = Empty" by simp
+lemma free_vars_inv_under_expand_quants:
+  "set (free_variables (expand_quantifiers qbf)) = set (free_variables qbf)"
+proof (induction qbf)
+  case (Var x)
+  then show ?case by simp
 next
-  case (2 x xs)
-  show "reverse_prefix (reverse_prefix (UniversalFirst x xs)) = UniversalFirst x xs"
-    by (cases "even (length (x # xs))") (auto simp add: Let_def)
+  case (Neg qbf)
+  then show ?case by simp
 next
-  case (3 x xs)
-  show "reverse_prefix (reverse_prefix (ExistentialFirst x xs)) = ExistentialFirst x xs"
-    by (cases "even (length (x # xs))") (auto simp add: Let_def)
+  case (Conj x)
+  then show ?case by fastforce
+next
+  case (Disj x)
+  then show ?case by fastforce
+next
+  case (Ex x1a qbf)
+  have 0: "set (free_variables_aux {x1a} q) = set (free_variables q) - {x1a}"
+    for q using bound_subtract_symmetry[where ?new = "{x1a}"] by simp
+  have "\<forall>b. set (free_variables (substitute_var x1a b (expand_quantifiers qbf)))
+            = set (free_variables (QBF.Ex x1a (expand_quantifiers qbf)))"
+    using set_free_vars_subst_ex_eq by simp
+  hence "set (free_variables (expand_quantifiers (QBF.Ex x1a qbf)))
+                 = set (free_variables_aux {x1a} (expand_quantifiers qbf))" by simp
+  also have "... = set (free_variables (expand_quantifiers qbf)) - {x1a}" using 0 by simp
+  also have "... = set (free_variables qbf) - {x1a}" using Ex.IH by simp
+  also have "... = set (free_variables_aux {x1a} qbf)" using 0 by simp
+  also have "... = set (free_variables (QBF.Ex x1a qbf))" by simp
+  finally show ?case .
+next
+  case (All x1a qbf) (* Similar to above *)
+  thus ?case using bound_subtract_symmetry[where ?new = "{x1a}"] set_free_vars_subst_all_eq by simp
 qed
 
-(* Returns (reversed prefix, remaining qbf) tuple. *)
-fun convert_inv_prefix_aux :: "QBF \<Rightarrow> prefix \<Rightarrow> (prefix \<times> QBF)" where
-"convert_inv_prefix_aux (All y qbf) (UniversalFirst (q_hd, q_tl) qs) =
-  convert_inv_prefix_aux qbf (UniversalFirst (y, q_hd # q_tl) qs)" |
-"convert_inv_prefix_aux (All y qbf) (ExistentialFirst (q_hd, q_tl) qs) =
-  convert_inv_prefix_aux qbf (UniversalFirst (y, []) ((q_hd, q_tl) # qs))" |
-"convert_inv_prefix_aux (Ex x qbf) (ExistentialFirst (q_hd, q_tl) qs) =
-  convert_inv_prefix_aux qbf (ExistentialFirst (x, q_hd # q_tl) qs)" |
-"convert_inv_prefix_aux (Ex x qbf) (UniversalFirst (q_hd, q_tl) qs) =
-  convert_inv_prefix_aux qbf (ExistentialFirst (x, []) ((q_hd, q_tl) # qs))" |
-"convert_inv_prefix_aux (All y qbf) Empty =
-  convert_inv_prefix_aux qbf (UniversalFirst (y, []) [])" |
-"convert_inv_prefix_aux (Ex x qbf) Empty =
-  convert_inv_prefix_aux qbf (ExistentialFirst (x, []) [])" |
-"convert_inv_prefix_aux qbf prefix = (prefix, qbf)"
+lemma semantics_eq_if_free_vars_eq:
+  assumes "\<forall>x \<in> set (free_variables qbf). I(x) = J(x)"
+  shows "qbf_semantics I qbf = qbf_semantics J qbf" using assms
+proof (induction I qbf rule: qbf_semantics.induct)
+  case (1 I z)
+  then show ?case by simp
+next
+  case (2 I qbf)
+  then show ?case by simp
+next
+  case (3 I qbf_list)
+  then show ?case by (induction qbf_list) auto
+next
+  case (4 I qbf_list)
+  then show ?case by (induction qbf_list) auto
+next
+  case (5 I x qbf)
+  have "qbf_semantics I (substitute_var x True qbf)
+       = qbf_semantics J (substitute_var x True qbf)"
+    using 5 set_free_vars_subst_ex_eq by blast
+  moreover have 1: "qbf_semantics I (substitute_var x False qbf)
+                   = qbf_semantics J (substitute_var x False qbf)"
+    using 5 set_free_vars_subst_ex_eq by blast
+  ultimately show ?case by simp
+next
+  case (6 I x qbf)
+  have "qbf_semantics I (substitute_var x True qbf)
+       = qbf_semantics J (substitute_var x True qbf)"
+    using 6 set_free_vars_subst_all_eq by blast
+  moreover have 1: "qbf_semantics I (substitute_var x False qbf)
+                   = qbf_semantics J (substitute_var x False qbf)"
+    using 6 set_free_vars_subst_all_eq by blast
+  ultimately show ?case by simp
+qed
 
-fun convert_inv_prefix :: "QBF \<Rightarrow> (prefix \<times> QBF)" where
-"convert_inv_prefix qbf = (let (p, q) = convert_inv_prefix_aux qbf Empty in (reverse_prefix p, q))"
+fun expand_qbf :: "QBF \<Rightarrow> QBF" where
+"expand_qbf qbf = expand_quantifiers (existential_closure qbf)"
 
-fun tmp :: "nat \<Rightarrow> nat option" where
-"tmp n = (if even n then Some n else None)"
+lemma sat_iff_expand_qbf_sat: "satisfiable (expand_qbf qbf) \<longleftrightarrow> satisfiable qbf"
+  using sat_iff_ex_close_sat sat_iff_expand_quants_sat by simp
 
-value "list_ex (\<lambda>x. x = None) (map tmp [2, 3, 4])"
+lemma expand_qbf_no_free: "set (free_variables (expand_qbf qbf)) = {}"
+proof -
+  have "set (free_variables (expand_qbf qbf))
+                 = set (free_variables (expand_quantifiers (existential_closure qbf)))" by simp
+  also have "... = set (free_variables (existential_closure qbf))"
+    using free_vars_inv_under_expand_quants by simp
+  also have "... = {}" using ex_closure_no_free by simp
+  finally show ?thesis .
+qed
 
-(*
-fun convert_inv_clause :: "QBF list \<Rightarrow> clause option" where
-"convert_inv_clause [] = Some []" |
-"convert_inv_clause (Cons (Var n) xs) =
-  map_option (\<lambda>xs. (pnum_num n) # xs) (convert_inv_clause xs)" |
-"convert_inv_clause (Cons (Neg (Var n)) xs) =
-  map_option (\<lambda>xs. (pnum_neg_num n) # xs) (convert_inv_clause xs)" |
-"convert_inv_clause (Cons _ _) = None"
+lemma expand_qbf_no_quants: "qbf_quantifier_depth (expand_qbf qbf) = 0"
+  using no_quants_after_expand_quants by simp
 
-fun convert_inv_clause :: "QBF list \<Rightarrow> clause \<Rightarrow> clause option" where
-"convert_inv_clause [] cl = Some cl" |
-"convert_inv_clause (Cons (Var n) xs) cl = convert_inv_clause xs ((pnum_num n) # cl)" |
-"convert_inv_clause (Cons (Neg (Var n)) xs) cl = convert_inv_clause xs ((pnum_neg_num n) # cl)" |
-"convert_inv_clause (Cons _ _) _ = None"
+fun eval_qbf :: "QBF \<Rightarrow> bool option" where
+"eval_qbf (Var x) = None" |
+"eval_qbf (Neg qbf) = map_option (\<lambda>x. \<not>x) (eval_qbf qbf)" |
+"eval_qbf (Conj list) = map_option (list_all (\<lambda>x. x = True)) (sequence (map eval_qbf list))" |
+"eval_qbf (Disj list) = map_option (list_ex (\<lambda>x. x = True)) (sequence (map eval_qbf list))" |
+"eval_qbf (Ex x qbf) = None" |
+"eval_qbf (All x qbf) = None"
 
-fun convert_inv_clauses :: "QBF list \<Rightarrow> matrix \<Rightarrow> matrix option" where
-"convert_inv_matrix_aux [] matrix = Some matrix" |
-"convert_inv_matrix_aux (Cons (Disj literals) xs) matrix =
-  (case convert_inv_clause literals of
-     None \<Rightarrow> None |
-     Some cl \<Rightarrow> convert_inv_clauses xs (cl # matrix))"
-   
+lemma pred_map_ex: "list_ex Q (map f x) = list_ex (Q \<circ> f) x"
+  by (induction x) auto
 
-fun convert_inv_matrix :: "QBF \<Rightarrow> matrix option" where
-"convert_inv_matrix (Conj clauses) = let clause_option = map " |
-"convert_inv_matrix _ = None"
+lemma eval_qbf_implements_semantics:
+  assumes "set (free_variables qbf) = {}" and "qbf_quantifier_depth qbf = 0"
+  shows "eval_qbf qbf = Some (qbf_semantics I qbf)" using assms
+proof (induction qbf)
+  case (Var x)
+  then show ?case by simp
+next
+  case (Neg qbf)
+  then show ?case by simp
+next
+  case (Conj x)
+  have "\<forall>q \<in> set x. eval_qbf q = Some (qbf_semantics I q)" using Conj by (induction x) auto
+  thus "eval_qbf (Conj x) = Some (qbf_semantics I (Conj x))"
+  proof (induction x)
+    case Nil
+    show "eval_qbf (Conj []) = Some (qbf_semantics I (Conj []))" by simp
+  next
+    case (Cons y ys)
+    have "map eval_qbf ys = map Some (map (qbf_semantics I) ys)" using Cons by simp
+    moreover have "eval_qbf y = Some (qbf_semantics I y)" using Cons.prems by simp
+    ultimately have "map eval_qbf (y # ys) = map Some (map (qbf_semantics I) (y # ys))" by simp
+    hence "sequence (map eval_qbf (y # ys)) = Some (map (qbf_semantics I) (y # ys))"
+      using sequence_content by metis
+    hence "eval_qbf (Conj (y # ys))
+          = Some (list_all (\<lambda>x. x = True) (map (qbf_semantics I) (y # ys)))"
+      by simp
+    hence "eval_qbf (Conj (y # ys)) = Some (list_all (qbf_semantics I) (y # ys))"
+      by (simp add: fun.map_ident list.pred_map)
+    thus "eval_qbf (Conj (y # ys)) = Some (qbf_semantics I (Conj (y # ys)))" by simp
+  qed
+next
+  case (Disj x) (* Similar to previous case *)
+  have "\<forall>q \<in> set x. eval_qbf q = Some (qbf_semantics I q)" using Disj by (induction x) auto
+  thus "eval_qbf (Disj x) = Some (qbf_semantics I (Disj x))"
+  proof (induction x)
+    case Nil
+    show "eval_qbf (Disj []) = Some (qbf_semantics I (Disj []))" by simp
+  next
+    case (Cons y ys)
+    have "map eval_qbf ys = map Some (map (qbf_semantics I) ys)" using Cons by simp
+    moreover have "eval_qbf y = Some (qbf_semantics I y)" using Cons.prems by simp
+    ultimately have "map eval_qbf (y # ys) = map Some (map (qbf_semantics I) (y # ys))" by simp
+    hence "sequence (map eval_qbf (y # ys)) = Some (map (qbf_semantics I) (y # ys))"
+      using sequence_content by metis
+    hence "eval_qbf (Disj (y # ys))
+          = Some (list_ex (\<lambda>x. x = True) (map (qbf_semantics I) (y # ys)))"
+      by simp
+    hence "eval_qbf (Disj (y # ys)) = Some (list_ex (qbf_semantics I) (y # ys))"
+      by (simp add: fun.map_ident pred_map_ex)
+    thus "eval_qbf (Disj (y # ys)) = Some (qbf_semantics I (Disj (y # ys)))" by simp
+  qed
+next
+  case (Ex x1a qbf)
+  hence False by simp
+  thus ?case by simp
+next
+  case (All x1a qbf)
+  hence False by simp
+  thus ?case by simp
+qed
 
-fun convert_inv :: "QBF \<Rightarrow> pcnf option" where
-*)
-*)
+fun naive_solver :: "QBF \<Rightarrow> bool" where
+"naive_solver qbf = the (eval_qbf (expand_qbf qbf))"
+
+theorem naive_solver_correct: "naive_solver qbf \<longleftrightarrow> satisfiable qbf"
+proof -
+  have "\<forall>I. naive_solver qbf = the (Some (qbf_semantics I (expand_qbf qbf)))"
+    using expand_qbf_no_free expand_qbf_no_quants eval_qbf_implements_semantics by simp
+  hence "naive_solver qbf = satisfiable (expand_qbf qbf)" unfolding satisfiable_def by simp
+  thus "naive_solver qbf = satisfiable qbf" using sat_iff_expand_qbf_sat by simp
+qed
+
+value test_qbf
+value "existential_closure test_qbf"
+value "expand_qbf test_qbf"
+value "naive_solver test_qbf"
 
 end
