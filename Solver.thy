@@ -1143,5 +1143,8 @@ value test_qbf
 value "existential_closure test_qbf"
 value "expand_qbf test_qbf"
 value "naive_solver test_qbf"
+value "the (convert_inv test_qbf)"
+value "the (convert_inv (existential_closure test_qbf))"
+value "convert_inv (expand_qbf test_qbf)"
 
 end
