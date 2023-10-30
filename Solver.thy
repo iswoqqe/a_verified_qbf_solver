@@ -192,6 +192,7 @@ fun sequence_aux :: "'a option list \<Rightarrow> 'a list \<Rightarrow> 'a list 
 fun sequence :: "'a option list \<Rightarrow> 'a list option" where
 "sequence list = map_option rev (sequence_aux list [])"
 
+(* Lemmas that are not needed at the moment: *)
 (*lemma sequence_aux_no_None_not_None:
   assumes "list_all (\<lambda>x. x \<noteq> None) xs"
   shows "sequence_aux xs list \<noteq> None" using assms
@@ -555,28 +556,6 @@ lemma bound_subtract_symmetry:
   "set (free_variables_aux (bound \<union> new) qbf) = set (free_variables_aux bound qbf) - new"
   by (induction bound qbf rule: free_variables_aux.induct) auto
 
-lemma distinct_free_variables: "distinct (free_variables qbf)"
-  using distinct_remdups by simp
-
-lemma sorted_free_variables: "sorted (free_variables qbf)"
-  by simp
-
-lemma free_Cons_eq_free_ex_tl:
-  assumes "free_variables qbf = x # xs"
-  shows "free_variables (Ex x qbf) = xs"
-proof -
-  have "set xs = set (sort (remdups (free_variables_aux {} qbf))) - {x}"
-    using assms distinct_free_variables[of qbf] by simp
-  moreover have "set (free_variables (Ex x qbf)) = set (remdups (free_variables_aux {} qbf)) - {x}"
-    using bound_subtract_symmetry[of "{}" "{x}" qbf] by simp
-  ultimately have "set (free_variables (Ex x qbf)) = set xs" by simp
-  moreover have "sorted xs" using assms sorted_free_variables sorted_simps(2) by metis
-  moreover have "distinct xs" using assms distinct_free_variables distinct.simps(2) by metis
-  moreover have "sorted (free_variables (Ex x qbf))" using sorted_free_variables by simp
-  moreover have "distinct (free_variables (Ex x qbf))" using distinct_free_variables by simp
-  ultimately show ?thesis using sorted_distinct_set_unique by blast
-qed
-
 (*** Existential Closure ***)
 fun existential_closure_aux :: "QBF \<Rightarrow> nat list \<Rightarrow> QBF" where
 "existential_closure_aux qbf Nil = qbf" |
@@ -712,28 +691,22 @@ qed
 theorem sat_iff_ex_close_sat: "satisfiable qbf \<longleftrightarrow> satisfiable (existential_closure qbf)"
 proof -
   have "satisfiable qbf = satisfiable (existential_closure_aux qbf (free_variables qbf))"
-  proof (induction qbf "free_variables qbf" arbitrary: qbf rule: existential_closure_aux.induct)
-    case (1 qbf)
-    thus ?case by simp
+  proof (cases "free_variables qbf")
+    case Nil
+    thus ?thesis by simp
   next
-    case (2 qbf x xs)
-    have free_qbf: "x # xs = free_variables qbf" by fact
-    have "xs = free_variables (Ex x qbf)" using 2 free_Cons_eq_free_ex_tl by metis
-    hence "satisfiable (Ex x qbf) = satisfiable (existential_closure_aux (Ex x qbf) xs)"
-      using 2 by simp
-    hence "satisfiable qbf = satisfiable (existential_closure_aux (Ex x qbf) xs)"
-      using sat_iff_ex_sat by simp
-    moreover have "satisfiable (existential_closure_aux (Ex x qbf) xs)
-                  = satisfiable (existential_closure_aux qbf (x # xs))"
-      using sat_iff_ex_sat by (induction "(Ex x qbf)" xs rule: existential_closure_aux.induct) auto
-    ultimately show "satisfiable qbf
-                    = satisfiable (existential_closure_aux qbf (free_variables qbf))"
-      using free_qbf by simp
+    case (Cons x xs)
+    have "satisfiable qbf = satisfiable (existential_closure_aux qbf (x # xs))"
+      using sat_iff_ex_sat by (induction xs) auto
+    thus "satisfiable qbf = satisfiable (existential_closure_aux qbf (free_variables qbf))"
+      using Cons by simp
   qed
-  thus "satisfiable qbf = satisfiable (existential_closure qbf)" by simp
+  thus ?thesis by simp
 qed
 
 (*** Naive solver ***)
+
+(* quantifier expansion *)
 fun list_max :: "nat list \<Rightarrow> nat" where
 "list_max Nil = 0" |
 "list_max (Cons x xs) = max x (list_max xs)"
@@ -797,6 +770,30 @@ termination
   by (auto simp add: qbf_quantifier_depth_substitute qbf_quantifier_depth_eq_max)
      (auto simp add: qbf_measure_lt_sum_list)
 
+(* Property 1: no quantifiers after expansion. *)
+lemma no_quants_after_expand_quants: "qbf_quantifier_depth (expand_quantifiers qbf) = 0"
+proof (induction qbf)
+  case (Var x)
+  show ?case by simp
+next
+  case (Neg qbf)
+  thus ?case by simp
+next
+  case (Conj x)
+  thus ?case by (induction x) auto
+next
+  case (Disj x)
+  thus ?case by (induction x) auto
+next
+  case (Ex x1a qbf)
+  thus ?case using qbf_quantifier_depth_substitute Ex.IH by simp
+next
+  case (All x1a qbf)
+  thus ?case using qbf_quantifier_depth_substitute All.IH by simp
+qed
+
+(* Property 2: semantics invariant under expansion (logical equivalence). *)
+
 lemma semantics_inv_under_expand:
   "qbf_semantics I qbf = qbf_semantics I (expand_quantifiers qbf)"
 proof (induction qbf arbitrary: I)
@@ -824,66 +821,7 @@ qed
 lemma sat_iff_expand_quants_sat: "satisfiable qbf \<longleftrightarrow> satisfiable (expand_quantifiers qbf)"
   unfolding satisfiable_def using semantics_inv_under_expand by simp
 
-lemma no_quants_after_expand_quants: "qbf_quantifier_depth (expand_quantifiers qbf) = 0"
-proof (induction qbf)
-  case (Var x)
-  show ?case by simp
-next
-  case (Neg qbf)
-  thus ?case by simp
-next
-  case (Conj x)
-  thus ?case by (induction x) auto
-next
-  case (Disj x)
-  thus ?case by (induction x) auto
-next
-  case (Ex x1a qbf)
-  thus ?case using qbf_quantifier_depth_substitute Ex.IH by simp
-next
-  case (All x1a qbf)
-  thus ?case using qbf_quantifier_depth_substitute All.IH by simp
-qed
-
-
-(*lemma expand_quants_subst_vars_comm:
-  "expand_quantifiers (substitute_var x b qbf) = substitute_var x b (expand_quantifiers qbf)"
-proof (induction qbf)
-  case (Var x)
-  then show ?case by (cases b) auto
-next
-  case (Neg qbf)
-  then show ?case by simp
-next
-  case (Conj x)
-  then show ?case by simp
-next
-  case (Disj x)
-  then show ?case by simp
-next
-  case (Ex x1a qbf)
-  show "expand_quantifiers (substitute_var x b (QBF.Ex x1a qbf))
-        = substitute_var x b (expand_quantifiers (QBF.Ex x1a qbf))"
-  proof (cases "x = x1a")
-    case True
-    thus ?thesis using Ex.IH remove_outer_substitute_var by simp
-  next
-    case False
-    thus ?thesis using Ex.IH swap_substitute_var_order by simp
-  qed
-next
-  case (All x1a qbf)
-  show "expand_quantifiers (substitute_var x b (QBF.All x1a qbf))
-        = substitute_var x b (expand_quantifiers (QBF.All x1a qbf))"
-  proof (cases "x = x1a")
-    case True
-    thus ?thesis using All.IH remove_outer_substitute_var by simp
-  next
-    case False
-    thus ?thesis using All.IH swap_substitute_var_order by simp
-  qed
-qed*)
-
+(* Property 3: free variables invariant under expansion. *)
 lemma set_free_vars_subst_all_eq:
   "set (free_variables (substitute_var x b qbf)) = set (free_variables (All x qbf))"
 proof (induction x b qbf rule: substitute_var.induct)
@@ -1002,44 +940,11 @@ next
   thus ?case using bound_subtract_symmetry[where ?new = "{x1a}"] set_free_vars_subst_all_eq by simp
 qed
 
-lemma semantics_eq_if_free_vars_eq:
-  assumes "\<forall>x \<in> set (free_variables qbf). I(x) = J(x)"
-  shows "qbf_semantics I qbf = qbf_semantics J qbf" using assms
-proof (induction I qbf rule: qbf_semantics.induct)
-  case (1 I z)
-  then show ?case by simp
-next
-  case (2 I qbf)
-  then show ?case by simp
-next
-  case (3 I qbf_list)
-  then show ?case by (induction qbf_list) auto
-next
-  case (4 I qbf_list)
-  then show ?case by (induction qbf_list) auto
-next
-  case (5 I x qbf)
-  have "qbf_semantics I (substitute_var x True qbf)
-       = qbf_semantics J (substitute_var x True qbf)"
-    using 5 set_free_vars_subst_ex_eq by blast
-  moreover have 1: "qbf_semantics I (substitute_var x False qbf)
-                   = qbf_semantics J (substitute_var x False qbf)"
-    using 5 set_free_vars_subst_ex_eq by blast
-  ultimately show ?case by simp
-next
-  case (6 I x qbf)
-  have "qbf_semantics I (substitute_var x True qbf)
-       = qbf_semantics J (substitute_var x True qbf)"
-    using 6 set_free_vars_subst_all_eq by blast
-  moreover have 1: "qbf_semantics I (substitute_var x False qbf)
-                   = qbf_semantics J (substitute_var x False qbf)"
-    using 6 set_free_vars_subst_all_eq by blast
-  ultimately show ?case by simp
-qed
-
+(* Any formula can be expanded to one with the three properties. *)
 fun expand_qbf :: "QBF \<Rightarrow> QBF" where
 "expand_qbf qbf = expand_quantifiers (existential_closure qbf)"
 
+(* The 3 properties from quantifier expansion are preserved. *)
 lemma sat_iff_expand_qbf_sat: "satisfiable (expand_qbf qbf) \<longleftrightarrow> satisfiable qbf"
   using sat_iff_ex_close_sat sat_iff_expand_quants_sat by simp
 
@@ -1056,6 +961,7 @@ qed
 lemma expand_qbf_no_quants: "qbf_quantifier_depth (expand_qbf qbf) = 0"
   using no_quants_after_expand_quants by simp
 
+(* All qbfs without any quantifiers or free variables can be evaluated. *)
 fun eval_qbf :: "QBF \<Rightarrow> bool option" where
 "eval_qbf (Var x) = None" |
 "eval_qbf (Neg qbf) = map_option (\<lambda>x. \<not>x) (eval_qbf qbf)" |
@@ -1067,6 +973,7 @@ fun eval_qbf :: "QBF \<Rightarrow> bool option" where
 lemma pred_map_ex: "list_ex Q (map f x) = list_ex (Q \<circ> f) x"
   by (induction x) auto
 
+(* The evaluation implements the semantics. *)
 lemma eval_qbf_implements_semantics:
   assumes "set (free_variables qbf) = {}" and "qbf_quantifier_depth qbf = 0"
   shows "eval_qbf qbf = Some (qbf_semantics I qbf)" using assms
@@ -1128,9 +1035,11 @@ next
   thus ?case by simp
 qed
 
+(* This can then be used to implement the naive solver ... *)
 fun naive_solver :: "QBF \<Rightarrow> bool" where
 "naive_solver qbf = the (eval_qbf (expand_qbf qbf))"
 
+(* ...which is correct. *)
 theorem naive_solver_correct: "naive_solver qbf \<longleftrightarrow> satisfiable qbf"
 proof -
   have "\<forall>I. naive_solver qbf = the (Some (qbf_semantics I (expand_qbf qbf)))"
@@ -1146,5 +1055,41 @@ value "naive_solver test_qbf"
 value "the (convert_inv test_qbf)"
 value "the (convert_inv (existential_closure test_qbf))"
 value "convert_inv (expand_qbf test_qbf)"
+
+
+(*lemma semantics_eq_if_free_vars_eq:
+  assumes "\<forall>x \<in> set (free_variables qbf). I(x) = J(x)"
+  shows "qbf_semantics I qbf = qbf_semantics J qbf" using assms
+proof (induction I qbf rule: qbf_semantics.induct)
+  case (1 I z)
+  then show ?case by simp
+next
+  case (2 I qbf)
+  then show ?case by simp
+next
+  case (3 I qbf_list)
+  then show ?case by (induction qbf_list) auto
+next
+  case (4 I qbf_list)
+  then show ?case by (induction qbf_list) auto
+next
+  case (5 I x qbf)
+  have "qbf_semantics I (substitute_var x True qbf)
+       = qbf_semantics J (substitute_var x True qbf)"
+    using 5 set_free_vars_subst_ex_eq by blast
+  moreover have 1: "qbf_semantics I (substitute_var x False qbf)
+                   = qbf_semantics J (substitute_var x False qbf)"
+    using 5 set_free_vars_subst_ex_eq by blast
+  ultimately show ?case by simp
+next
+  case (6 I x qbf)
+  have "qbf_semantics I (substitute_var x True qbf)
+       = qbf_semantics J (substitute_var x True qbf)"
+    using 6 set_free_vars_subst_all_eq by blast
+  moreover have 1: "qbf_semantics I (substitute_var x False qbf)
+                   = qbf_semantics J (substitute_var x False qbf)"
+    using 6 set_free_vars_subst_all_eq by blast
+  ultimately show ?case by simp
+qed*)
 
 end
