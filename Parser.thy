@@ -1,5 +1,5 @@
 theory Parser
-  imports Main Solver "HOL-Library.Code_Abstract_Char" "HOL-Library.Code_Target_Numeral"
+  imports Main Solver
 begin
 
 type_synonym 'a parser = "string \<Rightarrow> ('a \<times> string) option"
@@ -875,9 +875,5 @@ e 21 22 23 24 0
 40 -13 -24 0
 12 -23 -24 0
 '')"
-
-export_code
-  parse naive_solver convert
-  in SML file_prefix parser
 
 end

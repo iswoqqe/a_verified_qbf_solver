@@ -1,0 +1,3 @@
+#!/bin/sh
+
+../naive_solver_ocaml $1

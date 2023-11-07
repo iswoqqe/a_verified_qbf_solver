@@ -1,0 +1,3 @@
+#!/bin/sh
+
+../naive_solver_sml $1

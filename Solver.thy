@@ -546,8 +546,8 @@ fun free_variables_aux :: "nat set \<Rightarrow> QBF \<Rightarrow> nat list" whe
 "free_variables_aux bound (Neg qbf) = free_variables_aux bound qbf" |
 "free_variables_aux bound (Conj list) = concat (map (free_variables_aux bound) list)" |
 "free_variables_aux bound (Disj list) = concat (map (free_variables_aux bound) list)" |
-"free_variables_aux bound (Ex x qbf) = free_variables_aux (bound \<union> {x}) qbf" |
-"free_variables_aux bound (All x qbf) = free_variables_aux (bound \<union> {x}) qbf"
+"free_variables_aux bound (Ex x qbf) = free_variables_aux (insert x bound) qbf" |
+"free_variables_aux bound (All x qbf) = free_variables_aux (insert x bound) qbf"
 
 fun free_variables :: "QBF \<Rightarrow> nat list" where
 "free_variables qbf = sort (remdups (free_variables_aux {} qbf))"

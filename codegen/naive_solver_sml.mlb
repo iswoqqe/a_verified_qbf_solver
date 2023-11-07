@@ -1,0 +1,7 @@
+$(SML_LIB)/basis/basis.mlb
+
+local
+  run_naive_solver.sml
+in
+  naive_solver_wrapper.sml
+end
