@@ -1056,8 +1056,836 @@ value "the (convert_inv test_qbf)"
 value "the (convert_inv (existential_closure test_qbf))"
 value "convert_inv (expand_qbf test_qbf)"
 
+(* Formalisation of pcnf assignment *)
+fun lit_neg :: "literal \<Rightarrow> literal" where
+"lit_neg (P l) = N l" |
+"lit_neg (N l) = P l"
 
-(*lemma semantics_eq_if_free_vars_eq:
+fun lit_var :: "literal \<Rightarrow> nat" where
+"lit_var (P l) = l" |
+"lit_var (N l) = l"
+
+fun remove_lit_neg :: "literal \<Rightarrow> clause \<Rightarrow> clause" where
+"remove_lit_neg lit clause = filter (\<lambda>l. l \<noteq> lit_neg lit) clause"
+
+fun remove_lit_clauses :: "literal \<Rightarrow> matrix \<Rightarrow> matrix" where
+"remove_lit_clauses lit matrix = filter (\<lambda>cl. \<not>(list_ex (\<lambda>l. l = lit) cl)) matrix"
+
+fun matrix_assign :: "literal \<Rightarrow> matrix \<Rightarrow> matrix" where
+"matrix_assign lit matrix = remove_lit_clauses lit (map (remove_lit_neg lit) matrix)"
+
+fun prefix_pop :: "prefix \<Rightarrow> prefix" where
+"prefix_pop Empty = Empty" |
+"prefix_pop (UniversalFirst (x, Nil) Nil) = Empty" |
+"prefix_pop (UniversalFirst (x, Nil) (Cons (y, ys) qs)) = ExistentialFirst (y, ys) qs" |
+"prefix_pop (UniversalFirst (x, (Cons xx xs)) qs) = UniversalFirst (xx, xs) qs"  |
+"prefix_pop (ExistentialFirst (x, Nil) Nil) = Empty" |
+"prefix_pop (ExistentialFirst (x, Nil) (Cons (y, ys) qs)) = UniversalFirst (y, ys) qs" |
+"prefix_pop (ExistentialFirst (x, (Cons xx xs)) qs) = ExistentialFirst (xx, xs) qs"
+
+fun add_universal_to_prefix :: "nat \<Rightarrow> prefix \<Rightarrow> prefix" where
+"add_universal_to_prefix x Empty = UniversalFirst (x, []) []" |
+"add_universal_to_prefix x (UniversalFirst (y, ys) qs) =
+  UniversalFirst (x, y # ys) qs" |
+"add_universal_to_prefix x (ExistentialFirst (y, ys) qs) =
+  UniversalFirst (x, []) ((y, ys) # qs)"
+
+fun add_existential_to_prefix :: "nat \<Rightarrow> prefix \<Rightarrow> prefix" where
+"add_existential_to_prefix x Empty = ExistentialFirst (x, []) []" |
+"add_existential_to_prefix x (ExistentialFirst (y, ys) qs) =
+  ExistentialFirst (x, y # ys) qs" |
+"add_existential_to_prefix x (UniversalFirst (y, ys) qs) =
+  ExistentialFirst (x, []) ((y, ys) # qs)"
+
+fun quant_sets_measure :: "quant_sets \<Rightarrow> nat" where
+"quant_sets_measure Nil = 0" |
+"quant_sets_measure (Cons (x, xs) qs) = 1 + length xs + quant_sets_measure qs"
+
+fun prefix_measure :: "prefix \<Rightarrow> nat" where
+"prefix_measure Empty = 0" |
+"prefix_measure (UniversalFirst q qs) = quant_sets_measure (Cons q qs)" |
+"prefix_measure (ExistentialFirst q qs) = quant_sets_measure (Cons q qs)"
+
+lemma prefix_pop_decreases_measure:
+  "prefix \<noteq> Empty \<Longrightarrow> prefix_measure (prefix_pop prefix) < prefix_measure prefix"
+  by (induction rule: prefix_pop.induct) auto
+
+function remove_var_prefix :: "nat \<Rightarrow> prefix \<Rightarrow> prefix" where
+"remove_var_prefix x Empty = Empty" |
+"remove_var_prefix x (UniversalFirst (y, ys) qs) = (if x = y
+  then remove_var_prefix x (prefix_pop (UniversalFirst (y, ys) qs))
+  else add_universal_to_prefix y (remove_var_prefix x (prefix_pop (UniversalFirst (y, ys) qs))))" |
+"remove_var_prefix x (ExistentialFirst (y, ys) qs) = (if x = y
+  then remove_var_prefix x (prefix_pop (ExistentialFirst (y, ys) qs))
+  else add_existential_to_prefix y (remove_var_prefix x (prefix_pop (ExistentialFirst (y, ys) qs))))"
+  by pat_completeness auto
+termination
+  by (relation "measure (\<lambda>(x, pre). prefix_measure pre)")
+     (auto simp add: prefix_pop_decreases_measure simp del: prefix_measure.simps)
+
+fun pcnf_assign :: "literal \<Rightarrow> pcnf \<Rightarrow> pcnf" where
+"pcnf_assign lit (prefix, matrix) =
+  (remove_var_prefix (lit_var lit) prefix, matrix_assign lit matrix)"
+
+value "the (convert_inv test_qbf)"
+value "pcnf_assign (P 1) (the (convert_inv test_qbf))"
+value "pcnf_assign (P 3) (the (convert_inv test_qbf))"
+
+(* Formalisation of qbf variables *)
+fun variables_aux :: "QBF \<Rightarrow> nat list" where
+"variables_aux (Var x) = [x]" |
+"variables_aux (Neg qbf) = variables_aux qbf" |
+"variables_aux (Conj list) = concat (map variables_aux list)" |
+"variables_aux (Disj list) = concat (map variables_aux list)" |
+"variables_aux (Ex x qbf) = variables_aux qbf" |
+"variables_aux (All x qbf) = variables_aux qbf"
+
+fun variables :: "QBF \<Rightarrow> nat list" where
+"variables qbf = sort (remdups (variables_aux qbf))"
+
+fun prefix_variables_aux :: "QBF \<Rightarrow> nat list" where
+"prefix_variables_aux (All y qbf) = Cons y (prefix_variables_aux qbf)" |
+"prefix_variables_aux (Ex x qbf) = Cons x (prefix_variables_aux qbf)" |
+"prefix_variables_aux _ = Nil"
+
+fun prefix_variables :: "QBF \<Rightarrow> nat list" where
+"prefix_variables qbf = sort (remdups (prefix_variables_aux qbf))"
+
+(* convert is left-inverse for pcnf_p QBF formulas *)
+lemma convert_inv_inv:
+  "pcnf_p qbf \<Longrightarrow> convert (the (convert_inv qbf)) = qbf"
+  by (metis convert_inv convert_pcnf_p_ex option.sel)
+
+(* Alternative formalisation of pcnf semantics, free variables, prefix variables,
+   variables, and existential closure *)
+fun pcnf_variables :: "pcnf \<Rightarrow> nat list" where
+"pcnf_variables pcnf = variables (convert pcnf)"
+
+fun pcnf_prefix_variables :: "pcnf \<Rightarrow> nat list" where
+"pcnf_prefix_variables pcnf = prefix_variables (convert pcnf)"
+
+fun pcnf_free_variables :: "pcnf \<Rightarrow> nat list" where
+"pcnf_free_variables pcnf = free_variables (convert pcnf)"
+
+fun pcnf_existential_closure :: "pcnf \<Rightarrow> pcnf" where
+"pcnf_existential_closure pcnf = the (convert_inv (existential_closure (convert pcnf)))"
+
+(* pcnf is satisfiable iff existential closure is *)
+lemma ex_closure_aux_pcnf_p_inv:
+  "pcnf_p qbf \<Longrightarrow> pcnf_p (existential_closure_aux qbf vars)"
+  by (induction qbf vars rule: existential_closure_aux.induct) auto
+
+lemma ex_closure_pcnf_p_inv:
+  "pcnf_p qbf \<Longrightarrow> pcnf_p (existential_closure qbf)"
+  using ex_closure_aux_pcnf_p_inv by simp
+
+theorem pcnf_sat_iff_ex_close_sat:
+  "satisfiable (convert pcnf) = satisfiable (convert (pcnf_existential_closure pcnf))"
+  using convert_inv_inv convert_pcnf_p ex_closure_pcnf_p_inv sat_iff_ex_close_sat by auto
+
+(* pcnf existential closure does not have any free variables *)
+theorem pcnf_ex_closure_no_free:
+  "pcnf_free_variables (pcnf_existential_closure pcnf) = []"
+  using convert_inv_inv convert_pcnf_p ex_closure_pcnf_p_inv ex_closure_no_free by auto
+
+(* We will show that the set of free variables is decreasing after assignment using the following
+proof skeleton: *)
+lemma free_assgn_proof_skeleton:
+  "free = var - pre \<Longrightarrow> free_assgn = var_assgn - pre_assgn
+  \<Longrightarrow> var_assgn \<subseteq> var - lit
+  \<Longrightarrow> pre_assgn = pre - lit
+  \<Longrightarrow> free_assgn \<subseteq> free - lit"
+  by auto
+
+(* free = vars - prefix *)
+lemma lit_p_free_eq_vars:
+  "literal_p qbf \<Longrightarrow> set (free_variables qbf) = set (variables qbf)"
+  by (induction qbf rule: literal_p.induct) auto
+
+lemma cl_p_free_eq_vars:
+  assumes "clause_p qbf"
+  shows "set (free_variables qbf) = set (variables qbf)"
+proof -
+  obtain qbf_list where list_def: "qbf = Disj qbf_list"
+    using assms by (induction qbf rule: clause_p.induct) auto
+  moreover from this have "list_all literal_p qbf_list" using assms by simp
+  ultimately show ?thesis using lit_p_free_eq_vars by (induction qbf_list arbitrary: qbf) auto
+qed
+
+lemma cnf_p_free_eq_vars:
+  assumes "cnf_p qbf"
+  shows "set (free_variables qbf) = set (variables qbf)"
+proof -
+  obtain qbf_list where list_def: "qbf = Conj qbf_list"
+    using assms by (induction qbf rule: cnf_p.induct) auto
+  moreover from this have "list_all clause_p qbf_list" using assms by simp
+  ultimately show ?thesis using cl_p_free_eq_vars by (induction qbf_list arbitrary: qbf) auto
+qed
+
+lemma pcnf_p_free_eq_vars_minus_prefix_aux:
+  "pcnf_p qbf \<Longrightarrow> set (free_variables qbf) = set (variables qbf) - set (prefix_variables_aux qbf)"
+proof (induction qbf rule: prefix_variables_aux.induct)
+  case (1 y qbf)
+  thus ?case using bound_subtract_symmetry[of "{}" "{y}" qbf] by force
+next
+  case (2 x qbf)
+  thus ?case using bound_subtract_symmetry[of "{}" "{x}" qbf] by force
+next
+  case ("3_1" v)
+  hence False by simp
+  thus ?case by simp
+next
+  case ("3_2" v)
+  hence False by simp
+  thus ?case by simp
+next
+  case ("3_3" v)
+  hence "cnf_p (Conj v)" by (induction "Conj v" rule: pcnf_p.induct) auto
+  thus ?case using cnf_p_free_eq_vars by fastforce
+next
+  case ("3_4" v)
+  hence False by simp
+  thus ?case by simp
+qed
+
+lemma pcnf_p_free_eq_vars_minus_prefix:
+  "pcnf_p qbf \<Longrightarrow> set (free_variables qbf) = set (variables qbf) - set (prefix_variables qbf)"
+  using pcnf_p_free_eq_vars_minus_prefix_aux by simp
+
+lemma pcnf_free_eq_vars_minus_prefix:
+  "set (pcnf_free_variables pcnf)
+  = set (pcnf_variables pcnf) - set (pcnf_prefix_variables pcnf)"
+  using pcnf_p_free_eq_vars_minus_prefix convert_pcnf_p by simp
+
+(* var_assgn \<subseteq> var - lit *)
+lemma lit_not_in_matrix_assign_variables:
+  "lit_var lit \<notin> set (variables (convert_matrix (matrix_assign lit matrix)))"
+proof (induction matrix)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons cl cls)
+  then show ?case
+  proof (induction cl)
+    case Nil
+    then show ?case by simp
+  next
+    case (Cons l ls)
+    then show ?case
+    proof (induction l)
+      case (P x)
+      then show ?case
+      proof (induction lit)
+        case (P x')
+        then show ?case by (cases "x = x'") auto
+      next
+        case (N x')
+        then show ?case by (cases "x = x'") auto
+      qed
+    next
+      case (N x)
+      then show ?case
+      proof (induction lit)
+        case (P x')
+        then show ?case by (cases "x = x'") auto
+      next
+        case (N x')
+        then show ?case by (cases "x = x'") auto
+      qed
+    qed
+  qed
+qed
+
+lemma matrix_assign_vars_subseteq_matrix_vars_minus_lit:
+  "set (variables (convert_matrix (matrix_assign lit matrix)))
+  \<subseteq> set (variables (convert_matrix matrix)) - {lit_var lit}"
+  using lit_not_in_matrix_assign_variables by force
+
+lemma pcnf_vars_eq_matrix_vars:
+  "set (pcnf_variables (prefix, matrix))
+  = set (variables (convert_matrix matrix))"
+  by (induction "(prefix, matrix)" arbitrary: prefix rule: convert.induct) auto
+
+lemma pcnf_assign_vars_subseteq_vars_minus_lit:
+  "set (pcnf_variables (pcnf_assign x pcnf))
+  \<subseteq> set (pcnf_variables pcnf) - {lit_var x}"
+  using matrix_assign_vars_subseteq_matrix_vars_minus_lit pcnf_vars_eq_matrix_vars
+  by (induction pcnf) simp
+
+(* prefix_assgn = prefix - lit *)
+lemma add_ex_adds_prefix_var:
+  "set (pcnf_prefix_variables (add_existential_to_front x pcnf))
+  = set (pcnf_prefix_variables pcnf) \<union> {x}"
+  using convert_add_ex bound_subtract_symmetry[of "{}" "{x}" "convert pcnf"] by auto
+
+lemma add_ex_to_prefix_eq_add_to_front:
+  "(add_existential_to_prefix x prefix, matrix) = add_existential_to_front x (prefix, matrix)"
+  by (induction prefix) auto
+
+lemma add_all_adds_prefix_var:
+  "set (pcnf_prefix_variables (add_universal_to_front x pcnf))
+  = set (pcnf_prefix_variables pcnf) \<union> {x}"
+  using convert_add_all bound_subtract_symmetry[of "{}" "{x}" "convert pcnf"] by auto
+
+lemma add_all_to_prefix_eq_add_to_front:
+  "(add_universal_to_prefix x prefix, matrix) = add_universal_to_front x (prefix, matrix)"
+  by (induction prefix) auto
+
+lemma prefix_assign_vars_eq_prefix_vars_minus_lit:
+  "set (pcnf_prefix_variables (remove_var_prefix x prefix, matrix))
+  = set (pcnf_prefix_variables (prefix, matrix)) - {x}"
+proof (induction "(prefix, matrix)" arbitrary: prefix rule: convert.induct)
+  case 1
+  then show ?case by simp
+next
+  case (2 x)
+  then show ?case by simp
+next
+  case (3 x)
+  then show ?case by simp
+next
+  case (4 x q qs)
+  then show ?case
+    using add_all_adds_prefix_var add_all_to_prefix_eq_add_to_front by (induction q) auto
+next
+  case (5 x q qs)
+  then show ?case using add_ex_adds_prefix_var add_ex_to_prefix_eq_add_to_front by (induction q) auto
+next
+  case (6 x y ys qs)
+  then show ?case using add_all_adds_prefix_var add_all_to_prefix_eq_add_to_front by auto
+next
+  case (7 x y ys qs)
+  then show ?case using add_ex_adds_prefix_var add_ex_to_prefix_eq_add_to_front by auto
+qed
+
+lemma prefix_vars_matrix_inv:
+  "set (pcnf_prefix_variables (prefix, matrix1))
+  = set (pcnf_prefix_variables (prefix, matrix2))"
+  by (induction "(prefix, matrix1)" arbitrary: prefix rule: convert.induct) auto
+
+lemma pcnf_prefix_vars_eq_prefix_minus_lit:
+  "set (pcnf_prefix_variables (pcnf_assign x pcnf))
+  = set (pcnf_prefix_variables pcnf) - {lit_var x}"
+  using prefix_assign_vars_eq_prefix_vars_minus_lit prefix_vars_matrix_inv
+  by (induction pcnf) fastforce
+
+(* This concludes the proof of the theorem: *)
+theorem pcnf_assign_free_subseteq_free_minus_lit:
+  "set (pcnf_free_variables (pcnf_assign x pcnf)) \<subseteq> set (pcnf_free_variables pcnf) - {lit_var x}"
+  using free_assgn_proof_skeleton[OF
+      pcnf_free_eq_vars_minus_prefix[of pcnf]
+      pcnf_free_eq_vars_minus_prefix[of "pcnf_assign x pcnf"]
+      pcnf_assign_vars_subseteq_vars_minus_lit[of x pcnf]
+      pcnf_prefix_vars_eq_prefix_minus_lit[of x pcnf]] .
+
+(* The shape of a pcnf with an empty matrix and no variables is known *)
+lemma no_vars_if_no_free_no_prefix_vars:
+  "pcnf_free_variables pcnf = [] \<Longrightarrow> pcnf_prefix_variables pcnf = [] \<Longrightarrow> pcnf_variables pcnf = []"
+  by (metis Diff_iff list.set_intros(1) neq_Nil_conv pcnf_free_eq_vars_minus_prefix)
+
+lemma no_vars_if_no_free_empty_prefix:
+  "pcnf_free_variables (Empty, matrix) = [] \<Longrightarrow> pcnf_variables (Empty, matrix) = []"
+  using no_vars_if_no_free_no_prefix_vars by fastforce
+
+lemma single_clause_variables:
+  "set (pcnf_variables (Empty, [cl])) = set (map lit_var cl)"
+proof (induction cl)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons l ls)
+  then show ?case by (induction l) auto
+qed
+
+lemma empty_prefix_cons_matrix_variables:
+  "set (pcnf_variables (Empty, Cons cl cls))
+  = set (pcnf_variables (Empty, cls)) \<union> set (map lit_var cl)"
+  using single_clause_variables by auto
+
+lemma matrix_shape_if_empty_prefix_no_variables:
+  "pcnf_variables (Empty, matrix) = [] \<Longrightarrow> (\<exists>n. matrix = replicate n [])"
+proof (induction matrix)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons cl cls)
+  show ?case
+  proof (cases "cl = Nil")
+    case True
+    from this obtain n where "cls = replicate n []" using Cons by fastforce
+    hence "cl # cls = replicate (Suc n) []" using True by simp
+    then show ?thesis by (rule exI) 
+  next
+    case False
+    hence "set (pcnf_variables (Empty, cl # cls)) \<noteq> {}"
+      using empty_prefix_cons_matrix_variables by simp
+    hence False using Cons by blast
+    then show ?thesis by simp
+  qed
+qed
+
+(***
+Start of proof showing:
+\<exists>x\<Phi> \<approx>sat \<Phi>_x \<or> \<Phi>_\<not>x and \<forall>y\<Phi> \<approx>sat \<Phi>_y \<and> \<Phi>_\<not>y
+if z is the first variable in the prefix.
+***)
+
+(* Definition of pcnf semantics.
+  This is equal to qbf semantics according to lemma qbf_semantics_eq_pcnf_semantics.
+  I needed this in addition to the qbf semantics for some lemmas. *)
+fun literal_semantics :: "(nat \<Rightarrow> bool) \<Rightarrow> literal \<Rightarrow> bool" where
+"literal_semantics I (P x) = I x" |
+"literal_semantics I (N x) = (\<not>I x)"
+
+fun clause_semantics :: "(nat \<Rightarrow> bool) \<Rightarrow> clause \<Rightarrow> bool" where
+"clause_semantics I clause = list_ex (literal_semantics I) clause"
+
+fun matrix_semantics :: "(nat \<Rightarrow> bool) \<Rightarrow> matrix \<Rightarrow> bool" where
+"matrix_semantics I matrix = list_all (clause_semantics I) matrix"
+
+function pcnf_semantics :: "(nat \<Rightarrow> bool) \<Rightarrow> pcnf \<Rightarrow> bool" where
+"pcnf_semantics I (Empty, matrix) =
+  matrix_semantics I matrix" |
+"pcnf_semantics I (UniversalFirst (y, []) [], matrix) =
+  (pcnf_semantics (I(y := True)) (Empty, matrix)
+  \<and> pcnf_semantics (I(y := False)) (Empty, matrix))" |
+"pcnf_semantics I (ExistentialFirst (x, []) [], matrix) =
+  (pcnf_semantics (I(x := True)) (Empty, matrix)
+  \<or> pcnf_semantics (I(x := False)) (Empty, matrix))" |
+"pcnf_semantics I (UniversalFirst (y, []) (q # qs), matrix) =
+  (pcnf_semantics (I(y := True)) (ExistentialFirst q qs, matrix)
+  \<and> pcnf_semantics (I(y := False)) (ExistentialFirst q qs, matrix))" |
+"pcnf_semantics I (ExistentialFirst (x, []) (q # qs), matrix) =
+  (pcnf_semantics (I(x := True)) (UniversalFirst q qs, matrix)
+  \<or> pcnf_semantics (I(x := False)) (UniversalFirst q qs, matrix))" |
+"pcnf_semantics I (UniversalFirst (y, yy # ys) qs, matrix) =
+  (pcnf_semantics (I(y := True)) (UniversalFirst (yy, ys) qs, matrix)
+  \<and> pcnf_semantics (I(y := False)) (UniversalFirst (yy, ys) qs, matrix))" |
+"pcnf_semantics I (ExistentialFirst (x, xx # xs) qs, matrix) =
+  (pcnf_semantics (I(x := True)) (ExistentialFirst (xx, xs) qs, matrix)
+  \<or> pcnf_semantics (I(x := False)) (ExistentialFirst (xx, xs) qs, matrix))"
+  by pat_completeness auto
+termination
+  by (relation "measure (\<lambda>(I,p). measure_prefix_length p)") auto
+
+lemma qbf_semantics_eq_pcnf_semantics:
+  "pcnf_semantics I pcnf = qbf_semantics I (convert pcnf)"
+proof (induction pcnf arbitrary: I rule: convert.induct)
+  case (1 matrix)
+  then show ?case
+  proof (induction matrix)
+    case Nil
+    then show ?case by simp
+  next
+    case (Cons cl cls)
+    then show ?case
+    proof (induction cl)
+      case Nil
+      then show ?case by simp
+    next
+      case (Cons l ls)
+      then show ?case by (induction l) force+
+    qed
+  qed
+next
+  case (2 x matrix)
+  then show ?case using convert.simps(2) pcnf_semantics.simps(2)
+      qbf_semantics.simps(6) qbf_semantics_substitute_eq_assign by presburger
+next
+  case (3 x matrix)
+  then show ?case using convert.simps(3) pcnf_semantics.simps(3)
+      qbf_semantics.simps(5) qbf_semantics_substitute_eq_assign by presburger
+next
+  case (4 x q qs matrix)
+  then show ?case using qbf_semantics_substitute_eq_assign by fastforce
+next
+  case (5 x q qs matrix)
+  then show ?case using qbf_semantics_substitute_eq_assign by fastforce
+next
+  case (6 x y ys qs matrix)
+  then show ?case using qbf_semantics_substitute_eq_assign by fastforce
+next
+  case (7 x y ys qs matrix)
+  then show ?case using qbf_semantics_substitute_eq_assign by fastforce
+qed
+
+(* The clause semantics are invariant when removing false literals. *)
+lemma clause_semantics_inv_remove_false:
+  "clause_semantics (I(z := True)) cl = clause_semantics (I(z := True)) (remove_lit_neg (P z) cl)"
+  by (induction cl) auto
+
+lemma clause_semantics_inv_remove_true:
+  "clause_semantics (I(z := False)) cl = clause_semantics (I(z := False)) (remove_lit_neg (N z) cl)"
+  by (induction cl) auto
+
+(* The matrix semantics are invariant when removing clauses containing true literals. *)
+lemma matrix_semantics_inv_remove_true:
+  "matrix_semantics (I(z := True)) (matrix_assign (P z) matrix)
+  = matrix_semantics (I(z := True)) matrix"
+proof (induction matrix)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons cl cls)
+  then show ?case
+  proof (cases "P z \<in> set cl")
+    case True
+    hence 0: "clause_semantics (I(z := True)) cl" by (induction cl) auto
+    have "matrix_semantics (I(z := True)) (matrix_assign (P z) (cl # cls))
+         = matrix_semantics (I(z := True)) (matrix_assign (P z) cls)"
+      using 0 clause_semantics_inv_remove_false by simp
+    moreover have "matrix_semantics (I(z := True)) (cl # cls)
+                  = matrix_semantics (I(z := True)) cls"
+      using 0 by simp
+    ultimately show ?thesis using Cons by blast
+  next
+    case False
+    hence "matrix_assign (P z) (cl # cls) = remove_lit_neg (P z) cl # matrix_assign (P z) cls"
+      by (induction cl) auto
+    hence "matrix_semantics (I(z := True)) (matrix_assign (P z) (cl # cls))
+          \<longleftrightarrow> clause_semantics (I(z := True)) (remove_lit_neg (P z) cl)
+            \<and> matrix_semantics (I(z := True)) (matrix_assign (P z) cls)" by simp
+    moreover have "matrix_semantics (I(z := True)) (cl # cls)
+                  \<longleftrightarrow> clause_semantics (I(z := True)) cl
+                    \<and> matrix_semantics (I(z := True)) cls" by simp
+    ultimately show ?thesis using Cons clause_semantics_inv_remove_false by blast
+  qed
+qed
+
+lemma matrix_semantics_inv_remove_true':
+  assumes "y \<noteq> z"
+  shows "matrix_semantics (I(z := True, y := b)) (matrix_assign (P z) matrix)
+        = matrix_semantics (I(z := True, y := b)) matrix"
+  using assms matrix_semantics_inv_remove_true fun_upd_twist by metis
+
+lemma matrix_semantics_inv_remove_false:
+  "matrix_semantics (I(z := False)) (matrix_assign (N z) matrix)
+  = matrix_semantics (I(z := False)) matrix"
+proof (induction matrix)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons cl cls)
+  then show ?case
+  proof (cases "N z \<in> set cl")
+    case True
+    hence 0: "clause_semantics (I(z := False)) cl" by (induction cl) auto
+    have "matrix_semantics (I(z := False)) (matrix_assign (N z) (cl # cls))
+         = matrix_semantics (I(z := False)) (matrix_assign (N z) cls)"
+      using 0 clause_semantics_inv_remove_true by simp
+    moreover have "matrix_semantics (I(z := False)) (cl # cls)
+                  = matrix_semantics (I(z := False)) cls"
+      using 0 by simp
+    ultimately show ?thesis using Cons by blast
+  next
+    case False
+    hence "matrix_assign (N z) (cl # cls) = remove_lit_neg (N z) cl # matrix_assign (N z) cls"
+      by (induction cl) auto
+    hence "matrix_semantics (I(z := False)) (matrix_assign (N z) (cl # cls))
+          \<longleftrightarrow> clause_semantics (I(z := False)) (remove_lit_neg (N z) cl)
+            \<and> matrix_semantics (I(z := False)) (matrix_assign (N z) cls)" by simp
+    moreover have "matrix_semantics (I(z := False)) (cl # cls)
+                  \<longleftrightarrow> clause_semantics (I(z := False)) cl
+                    \<and> matrix_semantics (I(z := False)) cls" by simp
+    ultimately show ?thesis using Cons clause_semantics_inv_remove_true by blast
+  qed
+qed
+
+lemma matrix_semantics_inv_remove_false':
+  assumes "y \<noteq> z"
+  shows "matrix_semantics (I(z := False, y := b)) (matrix_assign (N z) matrix)
+        = matrix_semantics (I(z := False, y := b)) matrix"
+  using assms matrix_semantics_inv_remove_false fun_upd_twist by metis
+
+(* The matrix semantics are true for some I iff they are true for some matrix assignment. *)
+lemma matrix_semantics_disj_iff_true_assgn:
+  "(\<exists>b. matrix_semantics (I(z := b)) matrix)
+  \<longleftrightarrow> matrix_semantics (I(z := True)) (matrix_assign (P z) matrix)
+    \<or> matrix_semantics (I(z := False)) (matrix_assign (N z) matrix)"
+  using matrix_semantics_inv_remove_true matrix_semantics_inv_remove_false by (metis (full_types))
+
+(* The matrix semantics are true for all I iff they are true for both matrix assignments. *)
+lemma matrix_semantics_conj_iff_true_assgn:
+  "(\<forall>b. matrix_semantics (I(z := b)) matrix)
+  \<longleftrightarrow> matrix_semantics (I(z := True)) (matrix_assign (P z) matrix)
+    \<and> matrix_semantics (I(z := False)) (matrix_assign (N z) matrix)"
+  using matrix_semantics_inv_remove_true matrix_semantics_inv_remove_false by (metis (full_types))
+
+(* A pcnf assignment for a variable not in the prefix is equal to a matrix assignment. *)
+lemma pcnf_assign_free_eq_matrix_assgn':
+  assumes "lit_var lit \<notin> set (prefix_variables_aux (convert (prefix, matrix)))"
+  shows "pcnf_assign lit (prefix, matrix) = (prefix, matrix_assign lit matrix)"
+  using assms
+  by (induction "(prefix, matrix)" arbitrary: prefix rule: convert.induct) auto
+
+lemma pcnf_assign_free_eq_matrix_assgn:
+  assumes "lit_var lit \<notin> set (pcnf_prefix_variables (prefix, matrix))"
+  shows "pcnf_assign lit (prefix, matrix) = (prefix, matrix_assign lit matrix)"
+  using assms pcnf_assign_free_eq_matrix_assgn' by simp
+
+(* Lemmas for variables not in prefix. *)
+lemma neq_first_if_notin_all_prefix:
+  "z \<notin> set (pcnf_prefix_variables (UniversalFirst (y, ys) qs, matrix)) \<Longrightarrow> z \<noteq> y"
+  by (induction "(UniversalFirst (y, ys) qs, matrix)" rule: convert.induct) auto
+
+lemma neq_first_if_notin_ex_prefix:
+  "z \<notin> set (pcnf_prefix_variables (ExistentialFirst (x, xs) qs, matrix)) \<Longrightarrow> z \<noteq> x"
+  by (induction "(ExistentialFirst (x, xs) qs, matrix)" rule: convert.induct) auto
+
+lemma notin_pop_prefix_if_notin_prefix:
+  assumes "z \<notin> set (pcnf_prefix_variables (prefix, matrix))"
+  shows "z \<notin> set (pcnf_prefix_variables (prefix_pop prefix, matrix))"
+  using assms
+proof (induction prefix)
+  case (UniversalFirst q qs)
+  then show ?case
+  proof (induction q)
+    case (Pair y ys)
+    then show ?case
+      by (induction "(UniversalFirst (y, ys) qs, matrix)" rule: convert.induct) auto
+  qed
+next
+  case (ExistentialFirst q qs)
+  then show ?case
+  proof (induction q)
+    case (Pair x xs)
+    then show ?case
+      by (induction "(ExistentialFirst (x, xs) qs, matrix)" rule: convert.induct) auto
+  qed
+next
+  case Empty
+  then show ?case by simp
+qed  
+
+(* The pcnf semantics are invariant when assigning true literals. *)
+lemma pcnf_semantics_inv_matrix_assign_true:
+  assumes "z \<notin> set (pcnf_prefix_variables (prefix, matrix))"
+  shows "pcnf_semantics (I(z := True)) (prefix, matrix_assign (P z) matrix)
+        = pcnf_semantics (I(z := True)) (prefix, matrix)"
+  using assms
+proof (induction I "(prefix, matrix)" arbitrary: I prefix matrix rule: pcnf_semantics.induct)
+  case (1 I matrix)
+  then show ?case using matrix_semantics_inv_remove_true by simp
+next
+  case (2 I y matrix)
+  then show ?case using matrix_semantics_inv_remove_true' by simp
+next
+  case (3 I x matrix)
+  then show ?case using matrix_semantics_inv_remove_true' by simp
+next
+  case (4 I y q qs matrix)
+  hence neq: "z \<noteq> y" using neq_first_if_notin_all_prefix by blast
+  have "prefix_pop (UniversalFirst (y, []) (q # qs)) = ExistentialFirst q qs"
+    by (induction q) auto
+  hence "z \<notin> set (pcnf_prefix_variables (ExistentialFirst q qs, matrix))"
+    using 4(3) notin_pop_prefix_if_notin_prefix by metis
+  hence "pcnf_semantics (I(z := True)) (ExistentialFirst q qs, matrix) =
+    pcnf_semantics (I(z := True)) (ExistentialFirst q qs, matrix_assign (P z) matrix)"
+    for I using 4 by blast
+  then show ?case using neq by (simp add: fun_upd_twist)
+next
+  case (5 I x q qs matrix)
+  hence neq: "z \<noteq> x" using neq_first_if_notin_ex_prefix by blast
+  have "prefix_pop (ExistentialFirst (x, []) (q # qs)) = UniversalFirst q qs"
+    by (induction q) auto
+  hence "z \<notin> set (pcnf_prefix_variables (UniversalFirst q qs, matrix))"
+    using 5(3) notin_pop_prefix_if_notin_prefix by metis
+  hence "pcnf_semantics (I(z := True)) (UniversalFirst q qs, matrix) =
+    pcnf_semantics (I(z := True)) (UniversalFirst q qs, matrix_assign (P z) matrix)"
+    for I using 5 by blast
+  then show ?case using neq by (simp add: fun_upd_twist)
+next
+  case (6 I y yy ys qs matrix)
+  hence neq: "z \<noteq> y" using neq_first_if_notin_all_prefix by blast
+  have "z \<notin> set (pcnf_prefix_variables (UniversalFirst (yy, ys) qs, matrix))"
+    using 6(3) notin_pop_prefix_if_notin_prefix by fastforce
+  hence "pcnf_semantics (I(z := True)) (UniversalFirst (yy, ys) qs, matrix) =
+    pcnf_semantics (I(z := True)) (UniversalFirst (yy, ys) qs, matrix_assign (P z) matrix)"
+    for I using 6 by blast
+  then show ?case using neq by (simp add: fun_upd_twist)
+next
+  case (7 I x xx xs qs matrix)
+  hence neq: "z \<noteq> x" using neq_first_if_notin_ex_prefix by blast
+  have "z \<notin> set (pcnf_prefix_variables (ExistentialFirst (xx, xs) qs, matrix))"
+    using 7(3) notin_pop_prefix_if_notin_prefix by fastforce
+  hence "pcnf_semantics (I(z := True)) (ExistentialFirst (xx, xs) qs, matrix) =
+    pcnf_semantics (I(z := True)) (ExistentialFirst (xx, xs) qs, matrix_assign (P z) matrix)"
+    for I using 7 by blast
+  then show ?case using neq by (simp add: fun_upd_twist)
+qed
+
+lemma pcnf_semantics_inv_matrix_assign_false:
+  assumes "z \<notin> set (pcnf_prefix_variables (prefix, matrix))"
+  shows "pcnf_semantics (I(z := False)) (prefix, matrix_assign (N z) matrix)
+        = pcnf_semantics (I(z := False)) (prefix, matrix)"
+  using assms
+proof (induction I "(prefix, matrix)" arbitrary: I prefix matrix rule: pcnf_semantics.induct)
+  case (1 I matrix)
+  then show ?case using matrix_semantics_inv_remove_false by simp
+next
+  case (2 I y matrix)
+  then show ?case using matrix_semantics_inv_remove_false' by simp
+next
+  case (3 I x matrix)
+  then show ?case using matrix_semantics_inv_remove_false' by simp
+next
+  case (4 I y q qs matrix)
+  hence neq: "z \<noteq> y" using neq_first_if_notin_all_prefix by blast
+  have "prefix_pop (UniversalFirst (y, []) (q # qs)) = ExistentialFirst q qs"
+    by (induction q) auto
+  hence "z \<notin> set (pcnf_prefix_variables (ExistentialFirst q qs, matrix))"
+    using 4(3) notin_pop_prefix_if_notin_prefix by metis
+  hence "pcnf_semantics (I(z := False)) (ExistentialFirst q qs, matrix) =
+    pcnf_semantics (I(z := False)) (ExistentialFirst q qs, matrix_assign (N z) matrix)"
+    for I using 4 by blast
+  then show ?case using neq by (simp add: fun_upd_twist)
+next
+  case (5 I x q qs matrix)
+  hence neq: "z \<noteq> x" using neq_first_if_notin_ex_prefix by blast
+  have "prefix_pop (ExistentialFirst (x, []) (q # qs)) = UniversalFirst q qs"
+    by (induction q) auto
+  hence "z \<notin> set (pcnf_prefix_variables (UniversalFirst q qs, matrix))"
+    using 5(3) notin_pop_prefix_if_notin_prefix by metis
+  hence "pcnf_semantics (I(z := False)) (UniversalFirst q qs, matrix) =
+    pcnf_semantics (I(z := False)) (UniversalFirst q qs, matrix_assign (N z) matrix)"
+    for I using 5 by blast
+  then show ?case using neq by (simp add: fun_upd_twist)
+next
+  case (6 I y yy ys qs matrix)
+  hence neq: "z \<noteq> y" using neq_first_if_notin_all_prefix by blast
+  have "z \<notin> set (pcnf_prefix_variables (UniversalFirst (yy, ys) qs, matrix))"
+    using 6(3) notin_pop_prefix_if_notin_prefix by fastforce
+  hence "pcnf_semantics (I(z := False)) (UniversalFirst (yy, ys) qs, matrix) =
+    pcnf_semantics (I(z := False)) (UniversalFirst (yy, ys) qs, matrix_assign (N z) matrix)"
+    for I using 6 by blast
+  then show ?case using neq by (simp add: fun_upd_twist)
+next
+  case (7 I x xx xs qs matrix)
+  hence neq: "z \<noteq> x" using neq_first_if_notin_ex_prefix by blast
+  have "z \<notin> set (pcnf_prefix_variables (ExistentialFirst (xx, xs) qs, matrix))"
+    using 7(3) notin_pop_prefix_if_notin_prefix by fastforce
+  hence "pcnf_semantics (I(z := False)) (ExistentialFirst (xx, xs) qs, matrix) =
+    pcnf_semantics (I(z := False)) (ExistentialFirst (xx, xs) qs, matrix_assign (N z) matrix)"
+    for I using 7 by blast
+  then show ?case using neq by (simp add: fun_upd_twist)
+qed
+
+(* Disjunctions of the pcnf semantics are invariant when assigning true literals. *)
+lemma pcnf_semantics_disj_iff_matrix_assign_disj:
+  assumes "z \<notin> set (pcnf_prefix_variables (prefix, matrix))"
+  shows "pcnf_semantics (I(z := True)) (prefix, matrix)
+        \<or> pcnf_semantics (I(z := False)) (prefix, matrix)
+        \<longleftrightarrow>
+        pcnf_semantics (I(z := True)) (prefix, matrix_assign (P z) matrix)
+        \<or> pcnf_semantics (I(z := False)) (prefix, matrix_assign (N z) matrix)"
+  using assms
+proof (induction I "(prefix, matrix_assign (P z) matrix)"
+    arbitrary: I prefix matrix rule: pcnf_semantics.induct)
+  case (1 I)
+  then show ?case using ex_bool_eq matrix_semantics_disj_iff_true_assgn by simp
+next
+  case (2 I y)
+  hence neq: "y \<noteq> z" by simp
+  show ?case using ex_bool_eq matrix_semantics_inv_remove_true'
+      matrix_semantics_inv_remove_false' neq by simp
+next
+  case (3 I x)
+  hence neq: "x \<noteq> z" by simp
+  show ?case using ex_bool_eq matrix_semantics_inv_remove_true'
+      matrix_semantics_inv_remove_false' neq by simp
+next
+  case (4 I y q qs)
+  hence neq: "y \<noteq> z" using neq_first_if_notin_all_prefix by blast
+  have "prefix_pop (UniversalFirst (y, []) (q # qs)) = ExistentialFirst q qs"
+    by (induction q) auto
+  hence nin: "z \<notin> set (pcnf_prefix_variables (ExistentialFirst q qs, matrix))"
+    using 4(3) notin_pop_prefix_if_notin_prefix by metis
+  show ?case using nin neq pcnf_semantics_inv_matrix_assign_true
+      pcnf_semantics_inv_matrix_assign_false by (simp add: fun_upd_twist)
+next
+  case (5 I x q qs)
+  hence neq: "x \<noteq> z" using neq_first_if_notin_ex_prefix by blast
+  have "prefix_pop (ExistentialFirst (x, []) (q # qs)) = UniversalFirst q qs"
+    by (induction q) auto
+  hence nin: "z \<notin> set (pcnf_prefix_variables (UniversalFirst q qs, matrix))"
+    using 5(3) notin_pop_prefix_if_notin_prefix by metis
+  show ?case using nin neq pcnf_semantics_inv_matrix_assign_true
+      pcnf_semantics_inv_matrix_assign_false by (simp add: fun_upd_twist)
+next
+  case (6 I y yy ys qs)
+  hence neq: "y \<noteq> z" using neq_first_if_notin_all_prefix by blast
+  have nin: "z \<notin> set (pcnf_prefix_variables (UniversalFirst (yy, ys) qs, matrix))"
+    using 6(3) notin_pop_prefix_if_notin_prefix by fastforce
+  show ?case using nin neq pcnf_semantics_inv_matrix_assign_true
+      pcnf_semantics_inv_matrix_assign_false by (simp add: fun_upd_twist)
+next
+  case (7 I x xx xs qs)
+  hence neq: "x \<noteq> z" using neq_first_if_notin_ex_prefix by blast
+  have nin: "z \<notin> set (pcnf_prefix_variables (ExistentialFirst (xx, xs) qs, matrix))"
+    using 7(3) notin_pop_prefix_if_notin_prefix by fastforce
+  show ?case using nin neq pcnf_semantics_inv_matrix_assign_true
+      pcnf_semantics_inv_matrix_assign_false by (simp add: fun_upd_twist)
+qed
+
+(* Conjunctions of the pcnf semantics are invariant when assigning true literals. *)
+lemma pcnf_semantics_conj_iff_matrix_assign_conj:
+  assumes "z \<notin> set (pcnf_prefix_variables (prefix, matrix))"
+  shows "pcnf_semantics (I(z := True)) (prefix, matrix)
+        \<and> pcnf_semantics (I(z := False)) (prefix, matrix)
+        \<longleftrightarrow>
+        pcnf_semantics (I(z := True)) (prefix, matrix_assign (P z) matrix)
+        \<and> pcnf_semantics (I(z := False)) (prefix, matrix_assign (N z) matrix)"
+  using assms
+proof (induction I "(prefix, matrix_assign (P z) matrix)"
+    arbitrary: I prefix matrix rule: pcnf_semantics.induct)
+  case (1 I)
+  then show ?case using all_bool_eq matrix_semantics_conj_iff_true_assgn by simp
+next
+  case (2 I y)
+  hence neq: "y \<noteq> z" by simp
+  show ?case using matrix_semantics_inv_remove_true'
+      matrix_semantics_inv_remove_false' neq by simp
+next
+  case (3 I x)
+  hence neq: "x \<noteq> z" by simp
+  show ?case using matrix_semantics_inv_remove_true'
+      matrix_semantics_inv_remove_false' neq by simp
+next
+  case (4 I y q qs)
+  hence neq: "y \<noteq> z" using neq_first_if_notin_all_prefix by blast
+  have "prefix_pop (UniversalFirst (y, []) (q # qs)) = ExistentialFirst q qs"
+    by (induction q) auto
+  hence nin: "z \<notin> set (pcnf_prefix_variables (ExistentialFirst q qs, matrix))"
+    using 4(3) notin_pop_prefix_if_notin_prefix by metis
+  show ?case using nin neq pcnf_semantics_inv_matrix_assign_true
+      pcnf_semantics_inv_matrix_assign_false by (simp add: fun_upd_twist)
+next
+  case (5 I x q qs)
+  hence neq: "x \<noteq> z" using neq_first_if_notin_ex_prefix by blast
+  have "prefix_pop (ExistentialFirst (x, []) (q # qs)) = UniversalFirst q qs"
+    by (induction q) auto
+  hence nin: "z \<notin> set (pcnf_prefix_variables (UniversalFirst q qs, matrix))"
+    using 5(3) notin_pop_prefix_if_notin_prefix by metis
+  show ?case using nin neq pcnf_semantics_inv_matrix_assign_true
+      pcnf_semantics_inv_matrix_assign_false by (simp add: fun_upd_twist)
+next
+  case (6 I y yy ys qs)
+  hence neq: "y \<noteq> z" using neq_first_if_notin_all_prefix by blast
+  have nin: "z \<notin> set (pcnf_prefix_variables (UniversalFirst (yy, ys) qs, matrix))"
+    using 6(3) notin_pop_prefix_if_notin_prefix by fastforce
+  show ?case using nin neq pcnf_semantics_inv_matrix_assign_true
+      pcnf_semantics_inv_matrix_assign_false by (simp add: fun_upd_twist)
+next
+  case (7 I x xx xs qs)
+  hence neq: "x \<noteq> z" using neq_first_if_notin_ex_prefix by blast
+  have nin: "z \<notin> set (pcnf_prefix_variables (ExistentialFirst (xx, xs) qs, matrix))"
+    using 7(3) notin_pop_prefix_if_notin_prefix by fastforce
+  show ?case using nin neq pcnf_semantics_inv_matrix_assign_true
+      pcnf_semantics_inv_matrix_assign_false by (simp add: fun_upd_twist)
+qed
+
+(* Semantics are equal under two interpretations if they agree on the free variables. *)
+lemma semantics_eq_if_free_vars_eq:
   assumes "\<forall>x \<in> set (free_variables qbf). I(x) = J(x)"
   shows "qbf_semantics I qbf = qbf_semantics J qbf" using assms
 proof (induction I qbf rule: qbf_semantics.induct)
@@ -1074,22 +1902,140 @@ next
   then show ?case by (induction qbf_list) auto
 next
   case (5 I x qbf)
-  have "qbf_semantics I (substitute_var x True qbf)
-       = qbf_semantics J (substitute_var x True qbf)"
-    using 5 set_free_vars_subst_ex_eq by blast
-  moreover have 1: "qbf_semantics I (substitute_var x False qbf)
-                   = qbf_semantics J (substitute_var x False qbf)"
-    using 5 set_free_vars_subst_ex_eq by blast
-  ultimately show ?case by simp
+  hence "qbf_semantics I (substitute_var x b qbf)
+        = qbf_semantics J (substitute_var x b qbf)"
+    for b using set_free_vars_subst_ex_eq by (metis (full_types))
+  then show ?case by simp
 next
   case (6 I x qbf)
-  have "qbf_semantics I (substitute_var x True qbf)
-       = qbf_semantics J (substitute_var x True qbf)"
-    using 6 set_free_vars_subst_all_eq by blast
-  moreover have 1: "qbf_semantics I (substitute_var x False qbf)
-                   = qbf_semantics J (substitute_var x False qbf)"
-    using 6 set_free_vars_subst_all_eq by blast
-  ultimately show ?case by simp
-qed*)
+  hence "qbf_semantics I (substitute_var x b qbf)
+        = qbf_semantics J (substitute_var x b qbf)"
+    for b using set_free_vars_subst_all_eq by (metis (full_types))
+  then show ?case by simp
+qed
+
+lemma pcnf_semantics_eq_if_free_vars_eq:
+  assumes "\<forall>x \<in> set (pcnf_free_variables pcnf). I(x) = J(x)"
+  shows "pcnf_semantics I pcnf = pcnf_semantics J pcnf"
+  using assms semantics_eq_if_free_vars_eq qbf_semantics_eq_pcnf_semantics by simp
+
+(* Interpretation value of assigned variables does not matter *)
+lemma x_notin_assign_P_x:
+  "x \<notin> set (pcnf_variables (pcnf_assign (P x) pcnf))"
+  using pcnf_assign_vars_subseteq_vars_minus_lit by fastforce
+
+lemma x_notin_assign_N_x:
+  "x \<notin> set (pcnf_variables (pcnf_assign (N x) pcnf))"
+  using pcnf_assign_vars_subseteq_vars_minus_lit by fastforce
+
+lemma interp_value_ignored_for_pcnf_P_assign:
+  "pcnf_semantics (I(x := b)) (pcnf_assign (P x) pcnf)
+  = pcnf_semantics I (pcnf_assign (P x) pcnf)"
+  using pcnf_semantics_eq_if_free_vars_eq x_notin_assign_P_x
+    pcnf_free_eq_vars_minus_prefix by simp
+
+lemma interp_value_ignored_for_pcnf_N_assign:
+  "pcnf_semantics (I(x := b)) (pcnf_assign (N x) pcnf)
+  = pcnf_semantics I (pcnf_assign (N x) pcnf)"
+  using pcnf_semantics_eq_if_free_vars_eq x_notin_assign_N_x
+    pcnf_free_eq_vars_minus_prefix by simp
+
+(* A pcnf starting with an existential is satisfiable iff both possible assignments are. *)
+lemma sat_ex_first_iff_one_assign_sat:
+  assumes "x \<notin> set (pcnf_prefix_variables (prefix_pop (ExistentialFirst (x, xs) qs), matrix))"
+  shows "satisfiable (convert (ExistentialFirst (x, xs) qs, matrix))
+  \<longleftrightarrow> satisfiable (convert (pcnf_assign (P x) (prefix_pop (ExistentialFirst (x, xs) qs), matrix)))
+    \<or> satisfiable (convert (pcnf_assign (N x) (prefix_pop (ExistentialFirst (x, xs) qs), matrix)))"
+proof -
+  let ?pre = "ExistentialFirst (x, xs) qs"
+  have "satisfiable (convert (?pre, matrix))
+       = (\<exists>I. pcnf_semantics I (?pre, matrix))"
+    using satisfiable_def qbf_semantics_eq_pcnf_semantics by simp
+  also have "... =
+       (\<exists>I. pcnf_semantics (I(x := True)) (prefix_pop ?pre, matrix) \<or>
+            pcnf_semantics (I(x := False)) (prefix_pop ?pre, matrix))"
+    by (induction "?pre" rule: prefix_pop.induct) auto
+  also have "... =
+    (\<exists>I. pcnf_semantics (I(x := True)) (prefix_pop ?pre, matrix_assign (P x) matrix) \<or>
+         pcnf_semantics (I(x := False)) (prefix_pop ?pre, matrix_assign (N x) matrix))"
+    using pcnf_semantics_disj_iff_matrix_assign_disj assms by blast
+  also have "... \<longleftrightarrow>
+    (\<exists>I. pcnf_semantics (I(x := True)) (pcnf_assign (P x) (prefix_pop ?pre, matrix))) \<or>
+    (\<exists>I. pcnf_semantics (I(x := False)) (pcnf_assign (N x) (prefix_pop ?pre, matrix)))"
+    using pcnf_assign_free_eq_matrix_assgn[of "P x"] pcnf_assign_free_eq_matrix_assgn[of "N x"]
+      assms by auto
+  also have "... \<longleftrightarrow>
+    (\<exists>I. pcnf_semantics I (pcnf_assign (P x) (prefix_pop ?pre, matrix))) \<or>
+    (\<exists>I. pcnf_semantics I (pcnf_assign (N x) (prefix_pop ?pre, matrix)))"
+    using interp_value_ignored_for_pcnf_N_assign interp_value_ignored_for_pcnf_P_assign
+    by blast
+  also have "... \<longleftrightarrow>
+    satisfiable (convert (pcnf_assign (P x) (prefix_pop ?pre, matrix))) \<or>
+    satisfiable (convert (pcnf_assign (N x) (prefix_pop ?pre, matrix)))"
+    using satisfiable_def qbf_semantics_eq_pcnf_semantics by simp
+  finally show ?thesis .
+qed
+
+(* A pcnf starting with an existential is satisfiable
+  iff the disjunction of both possible assignments is.
+  That is: \<exists>x\<Phi> \<approx>sat \<Phi>_x \<or> \<Phi>_\<not>x. *)
+theorem sat_ex_first_iff_assign_disj_sat:
+  assumes "x \<notin> set (pcnf_prefix_variables (prefix_pop (ExistentialFirst (x, xs) qs), matrix))"
+  shows "satisfiable (convert (ExistentialFirst (x, xs) qs, matrix))
+  \<longleftrightarrow> satisfiable (Disj
+    [convert (pcnf_assign (P x) (prefix_pop (ExistentialFirst (x, xs) qs), matrix)),
+     convert (pcnf_assign (N x) (prefix_pop (ExistentialFirst (x, xs) qs), matrix))])"
+  using assms sat_ex_first_iff_one_assign_sat satisfiable_def
+    qbf_semantics_eq_pcnf_semantics by auto
+
+(* A pcnf starting with an universal is satisfiable
+  iff the disjunction of both possible assignments is. 
+  That is: \<forall>y\<Phi> \<approx>sat \<Phi>_y \<and> \<Phi>_\<not>y. *)
+theorem sat_ex_first_iff_assign_conj_sat:
+  assumes "y \<notin> set (pcnf_prefix_variables (prefix_pop (UniversalFirst (y, ys) qs), matrix))"
+  shows "satisfiable (convert (UniversalFirst (y, ys) qs, matrix))
+  \<longleftrightarrow> satisfiable (Conj
+    [convert (pcnf_assign (P y) (prefix_pop (UniversalFirst (y, ys) qs), matrix)),
+     convert (pcnf_assign (N y) (prefix_pop (UniversalFirst (y, ys) qs), matrix))])"
+proof -
+  let ?pre = "UniversalFirst (y, ys) qs"
+  have "satisfiable (convert (?pre, matrix))
+       = (\<exists>I. pcnf_semantics I (?pre, matrix))"
+    using satisfiable_def qbf_semantics_eq_pcnf_semantics by simp
+  also have "... =
+    (\<exists>I. pcnf_semantics (I(y := True)) (prefix_pop ?pre, matrix) \<and>
+         pcnf_semantics (I(y := False)) (prefix_pop ?pre, matrix))"
+    by (induction "?pre" rule: prefix_pop.induct) auto
+  also have "... =
+    (\<exists>I. pcnf_semantics (I(y := True)) (prefix_pop ?pre, matrix_assign (P y) matrix) \<and>
+         pcnf_semantics (I(y := False)) (prefix_pop ?pre, matrix_assign (N y) matrix))"
+    using pcnf_semantics_conj_iff_matrix_assign_conj assms by blast
+  also have "... =
+    (\<exists>I. pcnf_semantics (I(y := True)) (pcnf_assign (P y) (prefix_pop ?pre, matrix)) \<and>
+         pcnf_semantics (I(y := False)) (pcnf_assign (N y) (prefix_pop ?pre, matrix)))"
+    using pcnf_assign_free_eq_matrix_assgn[of "P y"] pcnf_assign_free_eq_matrix_assgn[of "N y"]
+      assms by simp
+  also have "... =
+    (\<exists>I. pcnf_semantics I (pcnf_assign (P y) (prefix_pop ?pre, matrix)) \<and>
+         pcnf_semantics I (pcnf_assign (N y) (prefix_pop ?pre, matrix)))"
+    using interp_value_ignored_for_pcnf_N_assign interp_value_ignored_for_pcnf_P_assign by blast
+  also have "... =
+    (\<exists>I. qbf_semantics I (convert (pcnf_assign (P y) (prefix_pop ?pre, matrix))) \<and>
+         qbf_semantics I (convert (pcnf_assign (N y) (prefix_pop ?pre, matrix))))"
+    using interp_value_ignored_for_pcnf_N_assign interp_value_ignored_for_pcnf_P_assign
+      qbf_semantics_eq_pcnf_semantics by blast
+  also have "... =
+    satisfiable (Conj
+      [convert (pcnf_assign (P y) (prefix_pop ?pre, matrix)),
+       convert (pcnf_assign (N y) (prefix_pop ?pre, matrix))])"
+    unfolding satisfiable_def by simp
+  finally show ?thesis .
+qed
+
+(***
+End of proof showing:
+\<exists>x\<Phi> \<approx>sat \<Phi>_x \<or> \<Phi>_\<not>x and \<forall>y\<Phi> \<approx>sat \<Phi>_y \<and> \<Phi>_\<not>y
+if x/y is the first variable in the prefix.
+***)
 
 end
