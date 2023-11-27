@@ -1378,7 +1378,7 @@ theorem pcnf_assign_free_subseteq_free_minus_lit:
       pcnf_assign_vars_subseteq_vars_minus_lit[of x pcnf]
       pcnf_prefix_vars_eq_prefix_minus_lit[of x pcnf]] .
 
-(* The shape of a pcnf with an empty matrix and no variables is known *)
+(* A pcnf with an empty matrix and no variables is true or false. *)
 lemma no_vars_if_no_free_no_prefix_vars:
   "pcnf_free_variables pcnf = [] \<Longrightarrow> pcnf_prefix_variables pcnf = [] \<Longrightarrow> pcnf_variables pcnf = []"
   by (metis Diff_iff list.set_intros(1) neq_Nil_conv pcnf_free_eq_vars_minus_prefix)
@@ -1424,12 +1424,6 @@ next
   qed
 qed
 
-(***
-Start of proof showing:
-\<exists>x\<Phi> \<approx>sat \<Phi>_x \<or> \<Phi>_\<not>x and \<forall>y\<Phi> \<approx>sat \<Phi>_y \<and> \<Phi>_\<not>y
-if z is the first variable in the prefix.
-***)
-
 (* Definition of pcnf semantics.
   This is equal to qbf semantics according to lemma qbf_semantics_eq_pcnf_semantics.
   I needed this in addition to the qbf semantics for some lemmas. *)
@@ -1468,7 +1462,7 @@ function pcnf_semantics :: "(nat \<Rightarrow> bool) \<Rightarrow> pcnf \<Righta
 termination
   by (relation "measure (\<lambda>(I,p). measure_prefix_length p)") auto
 
-lemma qbf_semantics_eq_pcnf_semantics:
+theorem qbf_semantics_eq_pcnf_semantics:
   "pcnf_semantics I pcnf = qbf_semantics I (convert pcnf)"
 proof (induction pcnf arbitrary: I rule: convert.induct)
   case (1 matrix)
@@ -1508,6 +1502,25 @@ next
   case (7 x y ys qs matrix)
   then show ?case using qbf_semantics_substitute_eq_assign by fastforce
 qed
+
+lemma false_if_empty_clause_in_matrix:
+  "[] \<in> set matrix \<Longrightarrow> pcnf_semantics I (prefix, matrix) = False"
+  by (induction I "(prefix, matrix)" arbitrary: prefix rule: pcnf_semantics.induct)
+     (induction matrix, auto)
+
+lemma true_if_matrix_empty:
+  "matrix = [] \<Longrightarrow> pcnf_semantics I (prefix, matrix) = True"
+  by (induction I "(prefix, matrix)" arbitrary: prefix rule: pcnf_semantics.induct) auto
+
+lemma empty_clause_or_matrix_if_empty_prefix_no_variables:
+  "pcnf_variables (Empty, matrix) = [] \<Longrightarrow> [] \<in> set matrix \<or> matrix = []"
+  using matrix_shape_if_empty_prefix_no_variables by fastforce
+
+(***
+Start of proof showing:
+\<exists>x\<Phi> \<approx>sat \<Phi>_x \<or> \<Phi>_\<not>x and \<forall>y\<Phi> \<approx>sat \<Phi>_y \<and> \<Phi>_\<not>y
+if z is the first variable in the prefix.
+***)
 
 (* The clause semantics are invariant when removing false literals. *)
 lemma clause_semantics_inv_remove_false:
@@ -1991,7 +2004,7 @@ theorem sat_ex_first_iff_assign_disj_sat:
 (* A pcnf starting with an universal is satisfiable
   iff the disjunction of both possible assignments is. 
   That is: \<forall>y\<Phi> \<approx>sat \<Phi>_y \<and> \<Phi>_\<not>y. *)
-theorem sat_ex_first_iff_assign_conj_sat:
+theorem sat_all_first_iff_assign_conj_sat:
   assumes "y \<notin> set (pcnf_prefix_variables (prefix_pop (UniversalFirst (y, ys) qs), matrix))"
   shows "satisfiable (convert (UniversalFirst (y, ys) qs, matrix))
   \<longleftrightarrow> satisfiable (Conj
@@ -2037,5 +2050,819 @@ End of proof showing:
 \<exists>x\<Phi> \<approx>sat \<Phi>_x \<or> \<Phi>_\<not>x and \<forall>y\<Phi> \<approx>sat \<Phi>_y \<and> \<Phi>_\<not>y
 if x/y is the first variable in the prefix.
 ***)
+
+(* definition of cleansed formula and properties of cleansed formulas *)
+fun cleansed_p :: "pcnf \<Rightarrow> bool" where
+"cleansed_p pcnf = distinct (prefix_variables_aux (convert pcnf))"
+
+lemma prefix_pop_cleansed_if_cleansed:
+  "cleansed_p (prefix, matrix) \<Longrightarrow> cleansed_p (prefix_pop prefix, matrix)"
+  by (induction prefix rule: prefix_pop.induct) auto
+
+lemma prefix_variables_aux_matrix_inv:
+  "prefix_variables_aux (convert (prefix, matrix1))
+  = prefix_variables_aux (convert (prefix, matrix2))"
+  by (induction "(prefix, matrix1)" arbitrary: prefix rule: convert.induct) auto
+
+lemma eq_prefix_cleansed_p_add_all_inv:
+  "cleansed_p (add_universal_to_front y (prefix, matrix1))
+  = cleansed_p (add_universal_to_front y (prefix, matrix2))"
+proof (induction y "(prefix, matrix1)" arbitrary: prefix rule: add_universal_to_front.induct)
+  case (1 x)
+  then show ?case by simp
+next
+  case (2 x y ys qs)
+  have "prefix_variables_aux (convert (UniversalFirst (y, ys) qs, matrix1))
+       = prefix_variables_aux (convert (UniversalFirst (y, ys) qs, matrix2))"
+    using prefix_variables_aux_matrix_inv by simp
+  then show ?case by simp
+next
+  case (3 x y ys qs)
+    have "prefix_variables_aux (convert (ExistentialFirst (y, ys) qs, matrix1))
+       = prefix_variables_aux (convert (ExistentialFirst (y, ys) qs, matrix2))"
+    using prefix_variables_aux_matrix_inv by simp
+  then show ?case by simp
+qed
+
+lemma eq_prefix_cleansed_p_add_ex_inv:
+  "cleansed_p (add_existential_to_front x (prefix, matrix1))
+  = cleansed_p (add_existential_to_front x (prefix, matrix2))"
+proof (induction x "(prefix, matrix1)" arbitrary: prefix rule: add_universal_to_front.induct)
+  case (1 x)
+  then show ?case by simp
+next
+  case (2 x y ys qs)
+  have "prefix_variables_aux (convert (UniversalFirst (y, ys) qs, matrix1))
+       = prefix_variables_aux (convert (UniversalFirst (y, ys) qs, matrix2))"
+    using prefix_variables_aux_matrix_inv by simp
+  then show ?case by simp
+next
+  case (3 x y ys qs)
+    have "prefix_variables_aux (convert (ExistentialFirst (y, ys) qs, matrix1))
+       = prefix_variables_aux (convert (ExistentialFirst (y, ys) qs, matrix2))"
+    using prefix_variables_aux_matrix_inv by simp
+  then show ?case by simp
+qed
+
+lemma cleansed_p_matrix_inv:
+  "cleansed_p (prefix, matrix1) = cleansed_p (prefix, matrix2)"
+proof (induction "(prefix, matrix1)" arbitrary: prefix rule: convert.induct)
+  case 1
+  then show ?case by simp
+next
+  case (2 x)
+  then show ?case by simp
+next
+  case (3 x)
+  then show ?case by simp
+next
+  case (4 x q qs)
+  have "(UniversalFirst (x, []) (q # qs), matrix)
+       = add_universal_to_front x (ExistentialFirst q qs, matrix)"
+    for matrix by (induction q) auto
+  then show ?case using eq_prefix_cleansed_p_add_all_inv by simp 
+next
+  case (5 x q qs)
+    have "(ExistentialFirst (x, []) (q # qs), matrix)
+       = add_existential_to_front x (UniversalFirst q qs, matrix)"
+    for matrix by (induction q) auto
+  then show ?case using eq_prefix_cleansed_p_add_ex_inv by simp
+next
+  case (6 x y ys qs)
+  have "(UniversalFirst (x, y # ys) qs, matrix)
+       = add_universal_to_front x (UniversalFirst (y, ys) qs, matrix)"
+    for matrix by simp
+  then show ?case using eq_prefix_cleansed_p_add_all_inv by metis
+next
+  case (7 x y ys qs)
+  have "(ExistentialFirst (x, y # ys) qs, matrix)
+       = add_existential_to_front x (ExistentialFirst (y, ys) qs, matrix)"
+    for matrix by simp
+  then show ?case using eq_prefix_cleansed_p_add_ex_inv by metis
+qed
+
+lemma cleansed_prefix_first_ex_unique:
+  assumes "cleansed_p (ExistentialFirst (x, xs) qs, matrix)"
+  shows "x \<notin> set (pcnf_prefix_variables (prefix_pop (ExistentialFirst (x, xs) qs), matrix))"
+  using assms by (induction "ExistentialFirst (x, xs) qs" rule: prefix_pop.induct) auto
+
+lemma cleansed_prefix_first_all_unique:
+  assumes "cleansed_p (UniversalFirst (y, ys) qs, matrix)"
+  shows "y \<notin> set (pcnf_prefix_variables (prefix_pop (UniversalFirst (y, ys) qs), matrix))"
+  using assms by (induction "UniversalFirst (y, ys) qs" rule: prefix_pop.induct) auto
+
+lemma cleansed_add_new_ex_to_front:
+  assumes "cleansed_p pcnf"
+    and "x \<notin> set (pcnf_prefix_variables pcnf)"
+  shows "cleansed_p (add_existential_to_front x pcnf)"
+  using assms by (induction x pcnf rule: add_existential_to_front.induct) auto
+
+lemma cleansed_add_new_all_to_front:
+  assumes "cleansed_p pcnf"
+    and "y \<notin> set (pcnf_prefix_variables pcnf)"
+  shows "cleansed_p (add_universal_to_front y pcnf)"
+  using assms by (induction y pcnf rule: add_existential_to_front.induct) auto
+
+lemma pcnf_assign_p_ex_eq:
+  assumes "cleansed_p (ExistentialFirst (x, xs) qs, matrix)"
+  shows "pcnf_assign (P x) (ExistentialFirst (x, xs) qs, matrix)
+        = (prefix_pop (ExistentialFirst (x, xs) qs), matrix_assign (P x) matrix)"
+  using assms by (metis cleansed_prefix_first_ex_unique lit_var.simps(1)
+      pcnf_assign.simps pcnf_assign_free_eq_matrix_assgn remove_var_prefix.simps(3))
+
+lemma pcnf_assign_p_all_eq:
+  assumes "cleansed_p (UniversalFirst (y, ys) qs, matrix)"
+  shows "pcnf_assign (P y) (UniversalFirst (y, ys) qs, matrix)
+        = (prefix_pop (UniversalFirst (y, ys) qs), matrix_assign (P y) matrix)"
+  using assms by (metis cleansed_prefix_first_all_unique lit_var.simps(1)
+      pcnf_assign.simps pcnf_assign_free_eq_matrix_assgn remove_var_prefix.simps(2))
+
+lemma pcnf_assign_n_ex_eq:
+  assumes "cleansed_p (ExistentialFirst (x, xs) qs, matrix)"
+  shows "pcnf_assign (N x) (ExistentialFirst (x, xs) qs, matrix)
+        = (prefix_pop (ExistentialFirst (x, xs) qs), matrix_assign (N x) matrix)"
+  using assms by (metis cleansed_prefix_first_ex_unique lit_var.simps(2)
+      pcnf_assign.simps pcnf_assign_free_eq_matrix_assgn remove_var_prefix.simps(3))
+
+lemma pcnf_assign_n_all_eq:
+  assumes "cleansed_p (UniversalFirst (y, ys) qs, matrix)"
+  shows "pcnf_assign (N y) (UniversalFirst (y, ys) qs, matrix)
+        = (prefix_pop (UniversalFirst (y, ys) qs), matrix_assign (N y) matrix)"
+  using assms by (metis cleansed_prefix_first_all_unique lit_var.simps(2)
+      pcnf_assign.simps pcnf_assign_free_eq_matrix_assgn remove_var_prefix.simps(2))
+
+(* pcnf cleansing formalization *)
+function pcnf_cleanse :: "pcnf \<Rightarrow> pcnf" where
+"pcnf_cleanse (Empty, matrix) = (Empty, matrix)" |
+"pcnf_cleanse (UniversalFirst (y, ys) qs, matrix) =
+  (if y \<in> set (pcnf_prefix_variables (prefix_pop (UniversalFirst (y, ys) qs), matrix))
+    then pcnf_cleanse (prefix_pop (UniversalFirst (y, ys) qs), matrix)
+    else add_universal_to_front y
+      (pcnf_cleanse (prefix_pop (UniversalFirst (y, ys) qs), matrix)))" |
+"pcnf_cleanse (ExistentialFirst (x, xs) qs, matrix) =
+  (if x \<in> set (pcnf_prefix_variables (prefix_pop (ExistentialFirst (x, xs) qs), matrix))
+    then pcnf_cleanse (prefix_pop (ExistentialFirst (x, xs) qs), matrix)
+    else add_existential_to_front x
+      (pcnf_cleanse (prefix_pop (ExistentialFirst (x, xs) qs), matrix)))"
+  by pat_completeness auto
+termination
+  by (relation "measure (\<lambda>(pre, mat). prefix_measure pre)")
+     (auto simp add: prefix_pop_decreases_measure simp del: prefix_measure.simps)
+
+value "pcnf_cleanse (UniversalFirst (0, [0]) [(0, [1, 2, 0, 1])], [])"
+
+(* cleansing preserves free variables *)
+lemma prefix_pop_all_prefix_vars_set:
+  "set (pcnf_prefix_variables (UniversalFirst (y, ys) qs, matrix))
+  = {y} \<union> set (pcnf_prefix_variables (prefix_pop (UniversalFirst (y, ys) qs), matrix))"
+  by (induction "(UniversalFirst (y, ys) qs, matrix)" rule: convert.induct, induction qs) auto
+
+lemma prefix_pop_ex_prefix_vars_set:
+  "set (pcnf_prefix_variables (ExistentialFirst (x, xs) qs, matrix))
+  = {x} \<union> set (pcnf_prefix_variables (prefix_pop (ExistentialFirst (x, xs) qs), matrix))"
+  by (induction "(ExistentialFirst (x, xs) qs, matrix)" rule: convert.induct, induction qs) auto
+
+lemma cleanse_prefix_vars_inv:
+  "set (pcnf_prefix_variables (prefix, matrix))
+  = set (pcnf_prefix_variables (pcnf_cleanse (prefix, matrix)))"
+  using add_all_adds_prefix_var prefix_pop_all_prefix_vars_set
+    add_ex_adds_prefix_var prefix_pop_ex_prefix_vars_set
+  by (induction "(prefix, matrix)" arbitrary: prefix rule: pcnf_cleanse.induct) auto
+
+lemma prefix_pop_all_vars_inv:
+  "set (pcnf_variables (UniversalFirst (y, ys) qs, matrix))
+  = set (pcnf_variables (prefix_pop (UniversalFirst (y, ys) qs), matrix))"
+  by (induction "(UniversalFirst (y, ys) qs, matrix)" rule: convert.induct, induction qs) auto
+
+lemma prefix_pop_ex_vars_inv:
+  "set (pcnf_variables (ExistentialFirst (x, xs) qs, matrix))
+  = set (pcnf_variables (prefix_pop (ExistentialFirst (x, xs) qs), matrix))"
+  by (induction "(ExistentialFirst (x, xs) qs, matrix)" rule: convert.induct, induction qs) auto
+
+lemma add_all_vars_inv:
+  "set (pcnf_variables (add_universal_to_front y pcnf))
+  = set (pcnf_variables pcnf)"
+  using convert_add_all by auto
+
+lemma add_ex_vars_inv:
+  "set (pcnf_variables (add_existential_to_front x pcnf))
+  = set (pcnf_variables pcnf)"
+  using convert_add_ex by auto
+
+lemma cleanse_vars_inv:
+  "set (pcnf_variables (prefix, matrix))
+  = set (pcnf_variables (pcnf_cleanse (prefix, matrix)))"
+  using add_all_vars_inv prefix_pop_all_vars_inv
+    add_ex_vars_inv prefix_pop_ex_vars_inv
+  by (induction "(prefix, matrix)" arbitrary: prefix rule: pcnf_cleanse.induct) auto
+
+theorem cleanse_free_vars_inv:
+  "set (pcnf_free_variables pcnf)
+  = set (pcnf_free_variables (pcnf_cleanse pcnf))"
+  using cleanse_prefix_vars_inv cleanse_vars_inv pcnf_free_eq_vars_minus_prefix
+  by (induction pcnf) simp_all
+
+(* cleansed_p holds after cleansing *)
+theorem pcnf_cleanse_cleanses:
+  "cleansed_p (pcnf_cleanse pcnf)"
+  using cleanse_prefix_vars_inv cleansed_add_new_all_to_front cleansed_add_new_ex_to_front
+  by (induction pcnf rule: pcnf_cleanse.induct) auto
+
+(* cleansed_p is invariant under pcnf_assign *)
+theorem pcnf_assign_cleansed_inv:
+  "cleansed_p pcnf \<Longrightarrow> cleansed_p (pcnf_assign lit pcnf)"
+proof (induction pcnf rule: convert.induct)
+  case (1 matrix)
+  then show ?case by simp
+next
+  case (2 x matrix)
+  then show ?case by simp
+next
+  case (3 x matrix)
+  then show ?case by simp
+next
+  case (4 x q qs matrix)
+  let ?z = "lit_var lit"
+  show ?case
+  proof (cases "x = ?z")
+    case True
+    then show ?thesis using 4 cleansed_p_matrix_inv
+        pcnf_assign_n_all_eq[of ?z] pcnf_assign_p_all_eq[of ?z]
+        prefix_pop_cleansed_if_cleansed lit_var.elims by metis
+  next
+    case False
+    let ?mat = "matrix_assign lit matrix"
+    have "cleansed_p (remove_var_prefix ?z (ExistentialFirst q qs), ?mat)"
+      using 4 by simp
+    moreover have "x \<notin> set (pcnf_prefix_variables (remove_var_prefix ?z (ExistentialFirst q qs), ?mat))"
+      using 4 False prefix_assign_vars_eq_prefix_vars_minus_lit[of ?z] prefix_vars_matrix_inv
+      by fastforce
+    ultimately have "cleansed_p (add_universal_to_prefix x (remove_var_prefix ?z (ExistentialFirst q qs)), ?mat)"
+      using cleansed_add_new_all_to_front add_all_to_prefix_eq_add_to_front by simp
+    then have "cleansed_p (remove_var_prefix ?z (UniversalFirst (x, []) (q # qs)), ?mat)"
+      using False by (induction q) auto
+    then show ?thesis by simp
+  qed
+next
+  case (5 x q qs matrix)
+  let ?z = "lit_var lit"
+  show ?case
+  proof (cases "x = ?z")
+    case True
+    then show ?thesis using 5 cleansed_p_matrix_inv
+        pcnf_assign_n_ex_eq[of ?z] pcnf_assign_p_ex_eq[of ?z]
+        prefix_pop_cleansed_if_cleansed lit_var.elims by metis
+  next
+    case False
+    let ?mat = "matrix_assign lit matrix"
+    have "cleansed_p (remove_var_prefix ?z (UniversalFirst q qs), ?mat)"
+      using 5 by simp
+    moreover have "x \<notin> set (pcnf_prefix_variables (remove_var_prefix ?z (UniversalFirst q qs), ?mat))"
+      using 5 False prefix_assign_vars_eq_prefix_vars_minus_lit[of ?z] prefix_vars_matrix_inv
+      by fastforce
+    ultimately have "cleansed_p (add_existential_to_prefix x (remove_var_prefix ?z (UniversalFirst q qs)), ?mat)"
+      using cleansed_add_new_ex_to_front add_ex_to_prefix_eq_add_to_front by simp
+    then have "cleansed_p (remove_var_prefix ?z (ExistentialFirst (x, []) (q # qs)), ?mat)"
+      using False by (induction q) auto
+    then show ?thesis by simp
+  qed
+next
+  case (6 x y ys qs matrix)
+  let ?z = "lit_var lit"
+  show ?case
+  proof (cases "x = ?z")
+    case True
+    then show ?thesis using 6 cleansed_p_matrix_inv
+        pcnf_assign_n_all_eq[of ?z] pcnf_assign_p_all_eq[of ?z]
+        prefix_pop_cleansed_if_cleansed lit_var.elims by metis
+  next
+    case False
+    let ?mat = "matrix_assign lit matrix"
+    have "cleansed_p (remove_var_prefix ?z (UniversalFirst (y, ys) qs), ?mat)"
+      using 6 by simp
+    moreover have "x \<notin> set (pcnf_prefix_variables (remove_var_prefix ?z (UniversalFirst (y, ys) qs), ?mat))"
+      using 6(2) False prefix_assign_vars_eq_prefix_vars_minus_lit[of ?z] prefix_vars_matrix_inv
+      by fastforce
+    ultimately have "cleansed_p (add_universal_to_prefix x (remove_var_prefix ?z (UniversalFirst (y, ys) qs)), ?mat)"
+      using cleansed_add_new_all_to_front add_all_to_prefix_eq_add_to_front by simp
+    then have "cleansed_p (remove_var_prefix ?z (UniversalFirst (x, (y # ys)) qs), ?mat)"
+      using False by simp
+    then show ?thesis by simp
+  qed
+next
+  case (7 x y ys qs matrix)
+  let ?z = "lit_var lit"
+  show ?case
+  proof (cases "x = ?z")
+    case True
+    then show ?thesis using 7 cleansed_p_matrix_inv
+        pcnf_assign_n_ex_eq[of ?z] pcnf_assign_p_ex_eq[of ?z]
+        prefix_pop_cleansed_if_cleansed lit_var.elims by metis
+  next
+    case False
+    let ?mat = "matrix_assign lit matrix"
+    have "cleansed_p (remove_var_prefix ?z (ExistentialFirst (y, ys) qs), ?mat)"
+      using 7 by simp
+    moreover have "x \<notin> set (pcnf_prefix_variables (remove_var_prefix ?z (ExistentialFirst (y, ys) qs), ?mat))"
+      using 7(2) False prefix_assign_vars_eq_prefix_vars_minus_lit[of ?z] prefix_vars_matrix_inv
+      by fastforce
+    ultimately have "cleansed_p (add_existential_to_prefix x (remove_var_prefix ?z (ExistentialFirst (y, ys) qs)), ?mat)"
+      using cleansed_add_new_ex_to_front add_ex_to_prefix_eq_add_to_front by simp
+    then have "cleansed_p (remove_var_prefix ?z (ExistentialFirst (x, (y # ys)) qs), ?mat)"
+      using False by simp
+    then show ?thesis by simp
+  qed
+qed
+
+(* cleansing preserves semantics *)
+lemma pop_redundant_ex_prefix_var_semantics_eq:
+  assumes "x \<in> set (pcnf_prefix_variables (prefix_pop (ExistentialFirst (x, xs) qs), matrix))"
+  shows "pcnf_semantics I (ExistentialFirst (x, xs) qs, matrix)
+        = pcnf_semantics I (prefix_pop (ExistentialFirst (x, xs) qs), matrix)"
+proof -
+  let ?pcnf = "(ExistentialFirst (x, xs) qs, matrix)"
+  let ?pop = "(prefix_pop (ExistentialFirst (x, xs) qs), matrix)"
+  have "set (pcnf_prefix_variables ?pcnf) = set (pcnf_prefix_variables ?pop)"
+    using assms prefix_pop_ex_prefix_vars_set by auto
+  hence "x \<notin> set (pcnf_free_variables ?pop)"
+    using assms pcnf_free_eq_vars_minus_prefix by simp
+  hence 0: "\<forall>z \<in> set (pcnf_free_variables ?pop). (I(x := b)) z = I z"
+    for b by simp
+  moreover have "pcnf_semantics I ?pcnf
+       \<longleftrightarrow> pcnf_semantics (I(x := True)) ?pop
+         \<or> pcnf_semantics (I(x := False)) ?pop"
+    by (induction "ExistentialFirst (x, xs) qs" rule: prefix_pop.induct) auto
+  ultimately show ?thesis using pcnf_semantics_eq_if_free_vars_eq by blast
+qed
+
+lemma pop_redundant_all_prefix_var_semantics_eq:
+  assumes "y \<in> set (pcnf_prefix_variables (prefix_pop (UniversalFirst (y, ys) qs), matrix))"
+  shows "pcnf_semantics I (UniversalFirst (y, ys) qs, matrix)
+        = pcnf_semantics I (prefix_pop (UniversalFirst (y, ys) qs), matrix)"
+proof -
+  let ?pcnf = "(UniversalFirst (y, ys) qs, matrix)"
+  let ?pop = "(prefix_pop (UniversalFirst (y, ys) qs), matrix)"
+  have "set (pcnf_prefix_variables ?pcnf) = set (pcnf_prefix_variables ?pop)"
+    using assms prefix_pop_all_prefix_vars_set by auto
+  hence "y \<notin> set (pcnf_free_variables ?pop)"
+    using assms pcnf_free_eq_vars_minus_prefix by simp
+  hence 0: "\<forall>z \<in> set (pcnf_free_variables ?pop). (I(y := b)) z = I z"
+    for b by simp
+  moreover have "pcnf_semantics I ?pcnf
+       \<longleftrightarrow> pcnf_semantics (I(y := True)) ?pop
+         \<and> pcnf_semantics (I(y := False)) ?pop"
+    by (induction "ExistentialFirst (y, ys) qs" rule: prefix_pop.induct) auto
+  ultimately show ?thesis using pcnf_semantics_eq_if_free_vars_eq by blast
+qed
+
+lemma pcnf_semantics_disj_eq_add_ex:
+  "pcnf_semantics (I(y := True)) pcnf \<or> pcnf_semantics (I(y := False)) pcnf
+  \<longleftrightarrow> pcnf_semantics I (add_existential_to_front y pcnf)"
+  using convert_add_ex qbf_semantics_eq_pcnf_semantics qbf_semantics_substitute_eq_assign by simp
+
+lemma pcnf_semantics_conj_eq_add_all:
+  "pcnf_semantics (I(y := True)) pcnf \<and> pcnf_semantics (I(y := False)) pcnf
+  \<longleftrightarrow> pcnf_semantics I (add_universal_to_front y pcnf)"
+  using convert_add_all qbf_semantics_eq_pcnf_semantics qbf_semantics_substitute_eq_assign by simp
+
+theorem pcnf_cleanse_preserves_semantics:
+  "pcnf_semantics I pcnf = pcnf_semantics I (pcnf_cleanse pcnf)"
+proof (induction pcnf arbitrary: I rule: pcnf_cleanse.induct)
+  case (1 matrix)
+  then show ?case by simp
+next
+  case (2 y ys qs matrix)
+  hence 0: "pcnf_semantics I (prefix_pop (UniversalFirst (y, ys) qs), matrix) =
+    pcnf_semantics I (pcnf_cleanse (prefix_pop (UniversalFirst (y, ys) qs), matrix))"
+    for I by cases auto
+  show ?case
+  proof (cases "y \<in> set (pcnf_prefix_variables (prefix_pop (UniversalFirst (y, ys) qs), matrix))")
+    case True
+    then show ?thesis
+      using 0 pop_redundant_all_prefix_var_semantics_eq by simp
+  next
+    case False
+    moreover have "pcnf_semantics I (UniversalFirst (y, ys) qs, matrix)
+       \<longleftrightarrow> pcnf_semantics (I(y := True)) (prefix_pop (UniversalFirst (y, ys) qs), matrix)
+         \<and> pcnf_semantics (I(y := False)) (prefix_pop (UniversalFirst (y, ys) qs), matrix)"
+      by (induction "UniversalFirst (y, ys) qs" rule: prefix_pop.induct) auto
+    ultimately show ?thesis using 0 pcnf_semantics_conj_eq_add_all by simp
+  qed
+next
+  case (3 x xs qs matrix)
+  hence 0: "pcnf_semantics I (prefix_pop (ExistentialFirst (x, xs) qs), matrix) =
+    pcnf_semantics I (pcnf_cleanse (prefix_pop (ExistentialFirst (x, xs) qs), matrix))"
+    for I by cases auto
+  show ?case
+  proof (cases "x \<in> set (pcnf_prefix_variables (prefix_pop (ExistentialFirst (x, xs) qs), matrix))")
+    case True
+    then show ?thesis
+      using 0 pop_redundant_ex_prefix_var_semantics_eq by simp
+  next
+    case False
+    moreover have "pcnf_semantics I (ExistentialFirst (x, xs) qs, matrix)
+       \<longleftrightarrow> pcnf_semantics (I(x := True)) (prefix_pop (ExistentialFirst (x, xs) qs), matrix)
+         \<or> pcnf_semantics (I(x := False)) (prefix_pop (ExistentialFirst (x, xs) qs), matrix)"
+      by (induction "ExistentialFirst (x, xs) qs" rule: prefix_pop.induct) auto
+    ultimately show ?thesis using 0 pcnf_semantics_disj_eq_add_ex by simp
+  qed
+qed
+
+(* The satisfiability theorems can then be restated using cleansed formulas *)
+theorem sat_ex_first_iff_assign_disj_sat':
+  assumes "cleansed_p (ExistentialFirst (x, xs) qs, matrix)"
+  shows "satisfiable (convert (ExistentialFirst (x, xs) qs, matrix))
+  \<longleftrightarrow> satisfiable (Disj
+    [convert (pcnf_assign (P x) (ExistentialFirst (x, xs) qs, matrix)),
+     convert (pcnf_assign (N x) (ExistentialFirst (x, xs) qs, matrix))])"
+  using assms cleansed_prefix_first_ex_unique sat_ex_first_iff_assign_disj_sat
+    pcnf_assign_p_ex_eq pcnf_assign_n_ex_eq by auto
+
+theorem sat_all_first_iff_assign_conj_sat':
+  assumes "cleansed_p (UniversalFirst (y, ys) qs, matrix)"
+  shows "satisfiable (convert (UniversalFirst (y, ys) qs, matrix))
+  \<longleftrightarrow> satisfiable (Conj
+    [convert (pcnf_assign (P y) (UniversalFirst (y, ys) qs, matrix)),
+     convert (pcnf_assign (N y) (UniversalFirst (y, ys) qs, matrix))])"
+  using assms cleansed_prefix_first_all_unique sat_all_first_iff_assign_conj_sat
+    pcnf_assign_p_all_eq pcnf_assign_n_all_eq by auto
+
+(* search based solver *)
+lemma add_all_inc_prefix_measure:
+  "prefix_measure (add_universal_to_prefix y prefix) = Suc (prefix_measure prefix)"
+  by (induction y prefix rule: add_universal_to_prefix.induct) auto
+
+lemma add_ex_inc_prefix_measure:
+  "prefix_measure (add_existential_to_prefix x prefix) = Suc (prefix_measure prefix)"
+  by (induction x prefix rule: add_universal_to_prefix.induct) auto
+
+lemma remove_var_non_increasing_measure:
+  "prefix_measure (remove_var_prefix z prefix) \<le> prefix_measure prefix"
+proof (induction z prefix rule: remove_var_prefix.induct)
+  case (1 x)
+  then show ?case by simp
+next
+  case (2 x y ys qs)
+  hence 0: "prefix_measure (remove_var_prefix x (prefix_pop (UniversalFirst (y, ys) qs)))
+    \<le> prefix_measure (prefix_pop (UniversalFirst (y, ys) qs))"
+  by (cases "x = y") (cases "prefix_pop (UniversalFirst (y, ys) qs) = Empty",simp_all)+
+  show ?case
+  proof (cases "x = y")
+    case True
+    hence "prefix_measure (remove_var_prefix x (UniversalFirst (y, ys) qs))
+          = prefix_measure (remove_var_prefix x (prefix_pop (UniversalFirst (y, ys) qs)))" by simp
+    also have "... \<le> prefix_measure (prefix_pop (UniversalFirst (y, ys) qs))" using 0 by simp
+    also have "... \<le> prefix_measure (UniversalFirst (y, ys) qs)"
+      using prefix_pop_decreases_measure less_imp_le_nat by blast
+    finally show ?thesis .
+  next
+    case False
+    hence "prefix_measure (remove_var_prefix x (UniversalFirst (y, ys) qs))
+          = prefix_measure (add_universal_to_prefix y
+              (remove_var_prefix x (prefix_pop (UniversalFirst (y, ys) qs))))" by simp
+    also have "... \<le> Suc (prefix_measure (prefix_pop (UniversalFirst (y, ys) qs)))"
+      using 0 add_all_inc_prefix_measure by simp
+    also have "... \<le> prefix_measure (UniversalFirst (y, ys) qs)"
+      using Suc_leI prefix_pop_decreases_measure by blast
+    finally show ?thesis .
+  qed
+next
+  case (3 x y ys qs)
+  hence 0: "prefix_measure (remove_var_prefix x (prefix_pop (ExistentialFirst (y, ys) qs)))
+    \<le> prefix_measure (prefix_pop (ExistentialFirst (y, ys) qs))"
+  by (cases "x = y") (cases "prefix_pop (ExistentialFirst (y, ys) qs) = Empty",simp_all)+
+  show ?case
+  proof (cases "x = y")
+    case True
+    hence "prefix_measure (remove_var_prefix x (ExistentialFirst (y, ys) qs))
+          = prefix_measure (remove_var_prefix x (prefix_pop (ExistentialFirst (y, ys) qs)))" by simp
+    also have "... \<le> prefix_measure (prefix_pop (ExistentialFirst (y, ys) qs))" using 0 by simp
+    also have "... \<le> prefix_measure (ExistentialFirst (y, ys) qs)"
+      using le_eq_less_or_eq prefix_pop_decreases_measure by blast
+    finally show ?thesis .
+  next
+    case False
+    hence "prefix_measure (remove_var_prefix x (ExistentialFirst (y, ys) qs))
+          = prefix_measure (add_existential_to_prefix y
+              (remove_var_prefix x (prefix_pop (ExistentialFirst (y, ys) qs))))" by simp
+    also have "... \<le> Suc (prefix_measure (prefix_pop (ExistentialFirst (y, ys) qs)))"
+      using 0 add_ex_inc_prefix_measure by simp
+    also have "... \<le> prefix_measure (ExistentialFirst (y, ys) qs)"
+      using Suc_leI prefix_pop_decreases_measure by blast
+    finally show ?thesis .
+  qed
+qed
+
+fun first_var :: "prefix \<Rightarrow> nat option" where
+"first_var (ExistentialFirst (x, xs) qs) = Some x" |
+"first_var (UniversalFirst (y, ys) qs) = Some y" |
+"first_var Empty = None"
+
+lemma remove_first_var_decreases_measure:
+  assumes "prefix \<noteq> Empty"
+  shows "prefix_measure (remove_var_prefix (the (first_var prefix)) prefix) < prefix_measure prefix"
+  using assms
+proof (induction prefix)
+  case (UniversalFirst q qs)
+  then show ?case
+  proof (induction q)
+    case (Pair y ys)
+    let ?pre = "UniversalFirst (y, ys) qs"
+    let ?var = "the (first_var ?pre)"
+    have "prefix_measure (remove_var_prefix ?var ?pre)
+         \<le> prefix_measure (prefix_pop ?pre)"
+      using remove_var_non_increasing_measure by simp
+    also have "... < prefix_measure ?pre"
+      using prefix_pop_decreases_measure by blast
+    finally show ?case .
+  qed
+next
+  case (ExistentialFirst q qs)
+  then show ?case
+  proof (induction q)
+    case (Pair x xs)
+    let ?pre = "ExistentialFirst (x, xs) qs"
+    let ?var = "the (first_var ?pre)"
+    have "prefix_measure (remove_var_prefix ?var ?pre)
+         \<le> prefix_measure (prefix_pop ?pre)"
+      using remove_var_non_increasing_measure by simp
+    also have "... < prefix_measure ?pre"
+      using prefix_pop_decreases_measure by blast
+    finally show ?case .
+  qed
+next
+  case Empty
+  then show ?case by simp
+qed
+
+fun first_existential :: "prefix \<Rightarrow> bool option" where
+"first_existential (ExistentialFirst q qs) = Some True" |
+"first_existential (UniversalFirst q qs) = Some False" |
+"first_existential Empty = None"
+
+function search :: "pcnf \<Rightarrow> bool option" where
+"search (prefix, matrix) =
+  (if [] \<in> set matrix then Some False
+  else if matrix = [] then Some True
+  else Option.bind (first_var prefix) (\<lambda>z.
+  Option.bind (first_existential prefix) (\<lambda>e. if e
+    then combine_options (\<or>)
+      (search (pcnf_assign (P z) (prefix, matrix)))
+      (search (pcnf_assign (N z) (prefix, matrix)))
+    else combine_options (\<and>)
+      (search (pcnf_assign (P z) (prefix, matrix)))
+      (search (pcnf_assign (N z) (prefix, matrix))))))"
+  by pat_completeness auto
+termination
+  apply (relation "measure (\<lambda>(pre, mat). prefix_measure pre)")
+  apply (auto simp add: prefix_pop_decreases_measure simp del: prefix_measure.simps)
+  using remove_first_var_decreases_measure first_var.simps(3) option.discI option.sel by metis+
+
+value "search (UniversalFirst (1, []) [(2, [3])], [])"
+value "search (UniversalFirst (1, []) [(2, [3])], [[]])"
+value "search (UniversalFirst (1, []) [(2, [3])], [[P 1]])"
+value "search (UniversalFirst (1, []) [(2, [3])], [[P 1, N 2]])"
+value "search (UniversalFirst (1, []) [(2, [3])], [[P 1, N 2], [N 1, P 3]])"
+
+fun search_solver :: "pcnf \<Rightarrow> bool" where
+"search_solver pcnf = the (search (pcnf_cleanse (pcnf_existential_closure pcnf)))"
+
+value "search_solver (UniversalFirst (1, []) [(2, [3])], [])"
+value "search_solver (UniversalFirst (1, []) [(2, [3])], [[]])"
+value "search_solver (UniversalFirst (1, []) [(2, [3])], [[P 1]])"
+value "search_solver (UniversalFirst (1, []) [(2, [3])], [[P 1, N 2]])"
+value "search_solver (UniversalFirst (1, []) [(2, [3])], [[P 1, N 2], [N 1, P 3]])"
+value "search_solver (UniversalFirst (1, []) [(2, [3])], [[P 1, N 2], [N 1, P 3], [P 4]])"
+value "search_solver (UniversalFirst (1, []) [(2, [3, 3, 3])], [[P 1, N 2], [N 1, P 3], [P 4]])"
+
+lemma search_cleansed_closed_yields_Some:
+  assumes "cleansed_p pcnf" and "pcnf_free_variables pcnf = []"
+  shows "(\<exists>b. search pcnf = Some b)" using assms
+proof (induction pcnf rule: search.induct)
+  case (1 prefix matrix)
+  then show ?case
+  proof (cases "[] \<in> set matrix")
+    case True
+    then show ?thesis by auto
+  next
+    case 2: False
+    then show ?thesis
+    proof (cases "matrix = []")
+      case True
+      then show ?thesis by auto
+    next
+      case 3: False
+      then show ?thesis
+      proof (cases "first_var prefix")
+        case None
+        hence "prefix = Empty" by (induction prefix) auto
+        hence False using `matrix \<noteq> []` `[] \<notin> set matrix`
+            `pcnf_free_variables (prefix, matrix) = []`
+            empty_clause_or_matrix_if_empty_prefix_no_variables
+            no_vars_if_no_free_empty_prefix by blast
+        then show ?thesis by simp
+      next
+        case 4: (Some z)
+        then show ?thesis
+        proof (cases "first_existential prefix")
+          case None
+          hence "prefix = Empty" by (induction prefix) auto
+          hence False using `matrix \<noteq> []` `[] \<notin> set matrix`
+              `pcnf_free_variables (prefix, matrix) = []`
+              empty_clause_or_matrix_if_empty_prefix_no_variables
+              no_vars_if_no_free_empty_prefix by blast
+          then show ?thesis by simp
+        next
+          case 5: (Some e)
+          have 6: "pcnf_free_variables (pcnf_assign lit (prefix, matrix)) = []"
+            for lit using pcnf_assign_free_subseteq_free_minus_lit 1(6)
+              Diff_empty set_empty subset_Diff_insert subset_empty
+              by metis
+          then show ?thesis
+          proof (cases e)
+            case 7: True
+            have "search (prefix, matrix)
+                  = combine_options (\<or>)
+                      (search (pcnf_assign (P z) (prefix, matrix)))
+                      (search (pcnf_assign (N z) (prefix, matrix)))"
+              using 2 3 4 5 7 by simp
+            moreover have "\<exists>b. search (pcnf_assign (P z) (prefix, matrix)) = Some b"
+              using 2 3 4 5 6 7 1(5,6) pcnf_assign_cleansed_inv 1(1)[of z e] by blast
+            moreover have "\<exists>b. search (pcnf_assign (N z) (prefix, matrix)) = Some b"
+              using 2 3 4 5 6 7 1(5,6) pcnf_assign_cleansed_inv 1(2)[of z e] by blast
+            ultimately show ?thesis by force
+          next
+            case 7: False
+            have "search (prefix, matrix)
+                  = combine_options (\<and>)
+                      (search (pcnf_assign (P z) (prefix, matrix)))
+                      (search (pcnf_assign (N z) (prefix, matrix)))"
+              using 2 3 4 5 7 by simp
+            moreover have "\<exists>b. search (pcnf_assign (P z) (prefix, matrix)) = Some b"
+              using 2 3 4 5 6 7 1(5,6) pcnf_assign_cleansed_inv 1(3)[of z e] by blast
+            moreover have "\<exists>b. search (pcnf_assign (N z) (prefix, matrix)) = Some b"
+              using 2 3 4 5 6 7 1(5,6) pcnf_assign_cleansed_inv 1(4)[of z e] by blast
+            ultimately show ?thesis by force
+          qed
+        qed
+      qed
+    qed
+  qed
+qed
+
+theorem search_cleansed_closed_correct:
+  assumes "cleansed_p pcnf" and "pcnf_free_variables pcnf = []"
+  shows "search pcnf = Some (satisfiable (convert pcnf))" using assms
+proof (induction pcnf rule: search.induct)
+  case (1 prefix matrix)
+  then show ?case
+  proof (cases "[] \<in> set matrix")
+    case True
+    then show ?thesis
+      using false_if_empty_clause_in_matrix qbf_semantics_eq_pcnf_semantics satisfiable_def by simp
+  next
+    case 2: False
+    then show ?thesis
+    proof (cases "matrix = []")
+      case True
+      then show ?thesis
+        using true_if_matrix_empty qbf_semantics_eq_pcnf_semantics satisfiable_def by simp
+    next
+      case 3: False
+      then show ?thesis
+      proof (cases "first_var prefix")
+        case None
+        hence "prefix = Empty" by (induction prefix) auto
+        hence False using `matrix \<noteq> []` `[] \<notin> set matrix`
+            `pcnf_free_variables (prefix, matrix) = []`
+            empty_clause_or_matrix_if_empty_prefix_no_variables
+            no_vars_if_no_free_empty_prefix by blast
+        then show ?thesis by simp
+      next
+        case 4: (Some z)
+        then show ?thesis
+        proof (cases "first_existential prefix")
+          case None
+          hence "prefix = Empty" by (induction prefix) auto
+          hence False using `matrix \<noteq> []` `[] \<notin> set matrix`
+              `pcnf_free_variables (prefix, matrix) = []`
+              empty_clause_or_matrix_if_empty_prefix_no_variables
+              no_vars_if_no_free_empty_prefix by blast
+          then show ?thesis by simp
+        next
+          case 5: (Some e)
+          have 6: "pcnf_free_variables (pcnf_assign lit (prefix, matrix)) = []"
+            for lit using pcnf_assign_free_subseteq_free_minus_lit 1(6)
+              Diff_empty set_empty subset_Diff_insert subset_empty
+            by metis
+          hence 7: "\<exists>b. search (pcnf_assign lit (prefix, matrix)) = Some b" for lit
+            using search_cleansed_closed_yields_Some pcnf_assign_cleansed_inv 6 1(5,6) by blast
+          then show ?thesis
+          proof (cases e)
+            case 8: True
+            from this obtain x xs qs where prefix_def: "prefix = ExistentialFirst (x, xs) qs"
+              using 5 by (induction prefix) auto
+            have "search (prefix, matrix)
+                  = combine_options (\<or>)
+                      (search (pcnf_assign (P z) (prefix, matrix)))
+                      (search (pcnf_assign (N z) (prefix, matrix)))"
+              using 2 3 4 5 8 by simp
+            hence 9: "the (search (prefix, matrix))
+                  \<longleftrightarrow> the (search (pcnf_assign (P z) (prefix, matrix)))
+                    \<or> the (search (pcnf_assign (N z) (prefix, matrix)))"
+              using 7 combine_options_simps(3) option.sel by metis
+            have "search (pcnf_assign (P z) (prefix, matrix))
+                 = Some (satisfiable (convert (pcnf_assign (P z) (prefix, matrix))))"
+              using 2 3 4 5 6 8 1(5,6) pcnf_assign_cleansed_inv 1(1)[of z e] by blast
+            moreover have "set (free_variables (convert (pcnf_assign (P z) (prefix, matrix)))) = {}"
+              using 6[of "P z"] by simp
+            ultimately have 10: "\<forall>I. the (search (pcnf_assign (P z) (prefix, matrix)))
+                  = qbf_semantics I (convert (pcnf_assign (P z) (prefix, matrix)))"
+              using semantics_eq_if_free_vars_eq[of "convert (pcnf_assign (P z) (prefix, matrix))"]
+              by (auto simp add: satisfiable_def)
+            have "search (pcnf_assign (N z) (prefix, matrix))
+                 = Some (satisfiable (convert (pcnf_assign (N z) (prefix, matrix))))"
+              using 2 3 4 5 6 8 1(5,6) pcnf_assign_cleansed_inv 1(2)[of z e] by blast
+            moreover have "set (free_variables (convert (pcnf_assign (N z) (prefix, matrix)))) = {}"
+              using 6[of "N z"] by simp
+            ultimately have 11: "\<forall>I. the (search (pcnf_assign (N z) (prefix, matrix)))
+                  = qbf_semantics I (convert (pcnf_assign (N z) (prefix, matrix)))"
+              using semantics_eq_if_free_vars_eq[of "convert (pcnf_assign (N z) (prefix, matrix))"]
+              by (auto simp add: satisfiable_def)
+            have "the (search (prefix, matrix))
+                 = satisfiable (Disj
+                   [convert (pcnf_assign (P z) (prefix, matrix)),
+                    convert (pcnf_assign (N z) (prefix, matrix))])"
+              using 9 10 11 satisfiable_def by simp
+            hence "search (prefix, matrix)
+                 = Some (satisfiable (Disj
+                   [convert (pcnf_assign (P z) (prefix, matrix)),
+                    convert (pcnf_assign (N z) (prefix, matrix))]))"
+              using 1(5,6) search_cleansed_closed_yields_Some by fastforce
+            moreover have "z = x" using prefix_def 4 by simp
+            ultimately show ?thesis using sat_ex_first_iff_assign_disj_sat' prefix_def 1(5) by simp
+          next
+            case 8: False
+            from this obtain y ys qs where prefix_def: "prefix = UniversalFirst (y, ys) qs"
+              using 5 by (induction prefix) auto
+            have "search (prefix, matrix)
+                  = combine_options (\<and>)
+                      (search (pcnf_assign (P z) (prefix, matrix)))
+                      (search (pcnf_assign (N z) (prefix, matrix)))"
+              using 2 3 4 5 8 by simp
+            hence 9: "the (search (prefix, matrix))
+                  \<longleftrightarrow> the (search (pcnf_assign (P z) (prefix, matrix)))
+                    \<and> the (search (pcnf_assign (N z) (prefix, matrix)))"
+              using 7 combine_options_simps(3) option.sel by metis
+            have "search (pcnf_assign (P z) (prefix, matrix))
+                 = Some (satisfiable (convert (pcnf_assign (P z) (prefix, matrix))))"
+              using 2 3 4 5 6 8 1(5,6) pcnf_assign_cleansed_inv 1(3)[of z e] by blast
+            moreover have "set (free_variables (convert (pcnf_assign (P z) (prefix, matrix)))) = {}"
+              using 6[of "P z"] by simp
+            ultimately have 10: "\<forall>I. the (search (pcnf_assign (P z) (prefix, matrix)))
+                  = qbf_semantics I (convert (pcnf_assign (P z) (prefix, matrix)))"
+              using semantics_eq_if_free_vars_eq[of "convert (pcnf_assign (P z) (prefix, matrix))"]
+              by (auto simp add: satisfiable_def)
+            have "search (pcnf_assign (N z) (prefix, matrix))
+                 = Some (satisfiable (convert (pcnf_assign (N z) (prefix, matrix))))"
+              using 2 3 4 5 6 8 1(5,6) pcnf_assign_cleansed_inv 1(4)[of z e] by blast
+            moreover have "set (free_variables (convert (pcnf_assign (N z) (prefix, matrix)))) = {}"
+              using 6[of "N z"] by simp
+            ultimately have 11: "\<forall>I. the (search (pcnf_assign (N z) (prefix, matrix)))
+                  = qbf_semantics I (convert (pcnf_assign (N z) (prefix, matrix)))"
+              using semantics_eq_if_free_vars_eq[of "convert (pcnf_assign (N z) (prefix, matrix))"]
+              by (auto simp add: satisfiable_def)
+            have "the (search (prefix, matrix))
+                 = satisfiable (Conj
+                   [convert (pcnf_assign (P z) (prefix, matrix)),
+                    convert (pcnf_assign (N z) (prefix, matrix))])"
+              using 9 10 11 satisfiable_def by simp
+            hence "search (prefix, matrix)
+                 = Some (satisfiable (Conj
+                   [convert (pcnf_assign (P z) (prefix, matrix)),
+                    convert (pcnf_assign (N z) (prefix, matrix))]))"
+              using 1(5,6) search_cleansed_closed_yields_Some by fastforce
+            moreover have "z = y" using prefix_def 4 by simp
+            ultimately show ?thesis using sat_all_first_iff_assign_conj_sat' prefix_def 1(5) by simp
+          qed
+        qed
+      qed
+    qed
+  qed
+qed
+
+theorem search_solver_correct:
+  "search_solver pcnf \<longleftrightarrow> satisfiable (convert pcnf)"
+proof -
+  have "satisfiable (convert pcnf)
+       = satisfiable (convert (pcnf_cleanse (pcnf_existential_closure pcnf)))"
+    using pcnf_sat_iff_ex_close_sat pcnf_cleanse_preserves_semantics
+      qbf_semantics_eq_pcnf_semantics satisfiable_def by simp
+  moreover have "pcnf_free_variables (pcnf_cleanse (pcnf_existential_closure pcnf)) = []"
+    using pcnf_ex_closure_no_free cleanse_free_vars_inv set_empty by metis
+  moreover have "cleansed_p (pcnf_cleanse (pcnf_existential_closure pcnf))"
+    using pcnf_cleanse_cleanses by blast
+  ultimately show ?thesis using search_cleansed_closed_correct by simp
+qed
 
 end

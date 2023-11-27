@@ -1,4 +1,4 @@
-open Run_naive_solver
+open Run_search_solver
 
 let read_file filename =
     let ch = open_in filename in
@@ -7,5 +7,5 @@ let read_file filename =
     s
 
 let executable_name::input_filename::args = Array.to_list Sys.argv;;
-let sat = SolverExport.run_naive_solver (read_file input_filename);;
+let sat = SolverExport.run_search_solver (read_file input_filename);;
 if sat then exit 10 else exit 20;;

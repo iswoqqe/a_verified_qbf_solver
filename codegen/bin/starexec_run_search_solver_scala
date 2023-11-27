@@ -1,0 +1,3 @@
+#!/bin/sh
+
+java -Xmx28G -jar ../search_solver_scala.jar $1

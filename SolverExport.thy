@@ -1,11 +1,30 @@
-theory NaiveSolverExport
+theory SolverExport
   imports Solver Parser "HOL-Library.Code_Abstract_Char" "HOL-Library.Code_Target_Numeral" "HOL-Library.RBT_Set"
 begin
 
 fun run_naive_solver :: "String.literal \<Rightarrow> bool" where
 "run_naive_solver qdimacs_str = naive_solver (convert (the (parse qdimacs_str)))"
 
+fun run_search_solver :: "String.literal \<Rightarrow> bool" where
+"run_search_solver qdimacs_str = search_solver (the (parse qdimacs_str))"
+
 value "run_naive_solver (String.implode
+''c an extension of the example from the QDIMACS specification
+c multiple
+c lines
+cwith
+c comments
+p cnf 40 4
+e 1 2 3 4 0
+a 11 12 13 14 0
+e 21 22 23 24 0
+-1  2 0
+2 -3 -4 0
+40 -13 -24 0
+12 -23 -24 0
+'')"
+
+value "run_search_solver (String.implode
 ''c an extension of the example from the QDIMACS specification
 c multiple
 c lines
@@ -88,5 +107,21 @@ export_code
 export_code
   run_naive_solver
   in Haskell file_prefix run_naive_solver
+
+export_code
+  run_search_solver
+  in SML file_prefix run_search_solver
+
+export_code
+  run_search_solver
+  in OCaml file_prefix run_search_solver
+
+export_code
+  run_search_solver
+  in Scala file_prefix run_search_solver
+
+export_code
+  run_search_solver
+  in Haskell file_prefix run_search_solver
 
 end

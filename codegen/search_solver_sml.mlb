@@ -1,0 +1,7 @@
+$(SML_LIB)/basis/basis.mlb
+
+local
+  run_search_solver.sml
+in
+  search_solver_wrapper.sml
+end
