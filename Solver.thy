@@ -111,14 +111,14 @@ qed
 (* The measure of an element in a disjunction/conjunction is less than the measure of the
 disjunction/conjunction. *)
 lemma qbf_measure_lt_sum_list:
-  assumes "z \<in> set qbf_list"
-  shows "qbf_measure z < Suc (sum_list (map qbf_measure qbf_list))"
+  assumes "qbf \<in> set qbf_list"
+  shows "qbf_measure qbf < Suc (sum_list (map qbf_measure qbf_list))"
 proof -
-  obtain left right where "left @ z # right = qbf_list" by (metis assms split_list)
+  obtain left right where "left @ qbf # right = qbf_list" by (metis assms split_list)
   hence "sum_list (map qbf_measure qbf_list)
-        = sum_list (map qbf_measure left) + qbf_measure z + sum_list (map qbf_measure right)"
+        = sum_list (map qbf_measure left) + qbf_measure qbf + sum_list (map qbf_measure right)"
     by fastforce
-  thus "qbf_measure z < Suc (sum_list (map qbf_measure qbf_list))" by simp
+  thus "qbf_measure qbf < Suc (sum_list (map qbf_measure qbf_list))" by simp
 qed
 
 function qbf_semantics :: "(nat \<Rightarrow> bool) \<Rightarrow> QBF \<Rightarrow> bool" where
@@ -165,14 +165,8 @@ fun convert_literal_inv :: "QBF \<Rightarrow> literal option" where
 "convert_literal_inv (Neg (Var z)) = Some (N z)" |
 "convert_literal_inv _ = None"
 
-lemma literal_inv: "convert_literal_inv (convert_literal n) = Some n"
-proof (induction rule: convert_literal.induct)
-  case (1 z)
-  thus "convert_literal_inv (convert_literal (P z)) = Some (P z)" by simp
-next
-  case (2 z)
-  thus "convert_literal_inv (convert_literal (N z)) = Some (N z)" by simp
-qed
+lemma literal_inv: "convert_literal_inv (convert_literal lit) = Some lit"
+  by (cases lit) auto
 
 (*
 (* like `sequence . map` == `mapM` in Haskell *)
@@ -357,53 +351,7 @@ theorem convert_inv: "convert_inv (convert pcnf) = Some pcnf"
 proof (induction pcnf)
   case (Pair prefix matrix)
   show "convert_inv (convert (prefix, matrix)) = Some (prefix, matrix)"
-  proof (induction rule: convert.induct)
-    case (1 matrix)
-    show "convert_inv (convert (Empty, matrix)) = Some (Empty, matrix)"
-      using matrix_inv by simp
-  next
-    case (2 x matrix)
-    show "convert_inv (convert (UniversalFirst (x, []) [], matrix))
-         = Some (UniversalFirst (x, []) [], matrix)"
-      using matrix_inv by simp
-  next
-    case (3 x matrix)
-    show "convert_inv (convert (ExistentialFirst (x, []) [], matrix))
-         = Some (ExistentialFirst (x, []) [], matrix)"
-      using matrix_inv by simp
-  next
-    case (4 x q qs matrix)
-    moreover have "add_universal_to_front x (ExistentialFirst q qs, matrix)
-                  = (UniversalFirst (x, []) (q # qs), matrix)"
-      by (induction q) simp
-    ultimately show "convert_inv (convert (UniversalFirst (x, []) (q # qs), matrix))
-                    = Some (UniversalFirst (x, []) (q # qs), matrix)"
-      by simp
-  next
-    case (5 x q qs matrix)
-    moreover have "add_existential_to_front x (UniversalFirst q qs, matrix)
-                  = (ExistentialFirst (x, []) (q # qs), matrix)"
-      by (induction q) simp
-    ultimately show "convert_inv (convert (ExistentialFirst (x, []) (q # qs), matrix))
-                    = Some (ExistentialFirst (x, []) (q # qs), matrix)"
-      by simp
-  next
-    case (6 x y ys qs matrix)
-    moreover have "add_universal_to_front x (ExistentialFirst (y, ys) qs, matrix)
-                  = (UniversalFirst (x, []) ((y, ys) # qs), matrix)"
-      by simp
-    ultimately show "convert_inv (convert (UniversalFirst (x, y # ys) qs, matrix))
-                    = Some (UniversalFirst (x, y # ys) qs, matrix)"
-      by simp
-  next
-    case (7 x y ys qs matrix)
-    moreover have "add_existential_to_front x (UniversalFirst (y, ys) qs, matrix)
-                  = (ExistentialFirst (x, []) ((y, ys) # qs), matrix)"
-      by simp
-    ultimately show "convert_inv (convert (ExistentialFirst (x, y # ys) qs, matrix))
-                    = Some (ExistentialFirst (x, y # ys) qs, matrix)"
-      by simp
-  qed    
+    using matrix_inv by (induction rule: convert.induct) auto
 qed
 
 (* Corollary: convert is injective. *)
@@ -472,7 +420,7 @@ proof -
   next
     case (Cons x xs)
     from this obtain ys where "map convert_literal ys = xs" by fastforce
-    moreover from Cons convert_literal_p_ex obtain y where "convert_literal y = x" by fastforce
+    moreover from Cons obtain y where "convert_literal y = x" by fastforce
     ultimately have "map convert_literal (y # ys) = x # xs" by simp
     thus "\<exists>ys. map convert_literal ys = x # xs" by (rule exI)
   qed
@@ -492,7 +440,7 @@ proof -
   next
     case (Cons x xs)
     from this obtain ys where "map convert_clause ys = xs" by fastforce
-    moreover from Cons convert_literal_p_ex obtain y where "convert_clause y = x" by fastforce
+    moreover from Cons obtain y where "convert_clause y = x" by fastforce
     ultimately have "map convert_clause (y # ys) = x # xs" by simp
     thus "\<exists>ys. map convert_clause ys = x # xs" by (rule exI)
   qed
@@ -552,7 +500,7 @@ fun free_variables_aux :: "nat set \<Rightarrow> QBF \<Rightarrow> nat list" whe
 fun free_variables :: "QBF \<Rightarrow> nat list" where
 "free_variables qbf = sort (remdups (free_variables_aux {} qbf))"
 
-lemma bound_subtract_symmetry:
+lemma bound_subtract_equiv:
   "set (free_variables_aux (bound \<union> new) qbf) = set (free_variables_aux bound qbf) - new"
   by (induction bound qbf rule: free_variables_aux.induct) auto
 
@@ -564,25 +512,18 @@ fun existential_closure_aux :: "QBF \<Rightarrow> nat list \<Rightarrow> QBF" wh
 fun existential_closure :: "QBF \<Rightarrow> QBF" where
 "existential_closure qbf = existential_closure_aux qbf (free_variables qbf)"
 
-lemma ex_closure_vars_not_free:
+lemma ex_closure_aux_vars_not_free:
   "set (free_variables (existential_closure_aux qbf vars)) = set (free_variables qbf) - set vars"
-proof (induction qbf vars rule: existential_closure_aux.induct)
-  case (1 qbf)
+proof (induction vars)
+  case Nil
   then show ?case by simp
 next
-  case (2 qbf x xs)
-  let ?close_xs = "existential_closure_aux qbf xs"
-  have "set (free_variables_aux {x} ?close_xs) = set (free_variables_aux {} ?close_xs) - {x}"
-    using bound_subtract_symmetry[of "{}" "{x}" ?close_xs] by simp
-  thus ?case using 2 by auto
+  case (Cons x xs)
+  thus ?case using bound_subtract_equiv[of "{}" "{x}"] by auto
 qed
 
-theorem ex_closure_no_free: "free_variables (existential_closure qbf) = []"
-proof -
-  have "set (free_variables (existential_closure_aux qbf (free_variables qbf))) = {}"
-    using ex_closure_vars_not_free by simp
-  thus ?thesis by simp
-qed
+theorem ex_closure_no_free: "set (free_variables (existential_closure qbf)) = {}"
+  using ex_closure_aux_vars_not_free by simp
 
 lemma swap_substitute_var_order:
   assumes "x1 \<noteq> x2 \<or> b1 = b2"
@@ -688,21 +629,11 @@ next
   thus ?thesis unfolding satisfiable_def using qbf_semantics_substitute_eq_assign by simp
 qed
 
+lemma sat_iff_ex_close_aux_sat: "satisfiable qbf \<longleftrightarrow> satisfiable (existential_closure_aux qbf vars)"
+  using sat_iff_ex_sat by (induction vars) auto
+
 theorem sat_iff_ex_close_sat: "satisfiable qbf \<longleftrightarrow> satisfiable (existential_closure qbf)"
-proof -
-  have "satisfiable qbf = satisfiable (existential_closure_aux qbf (free_variables qbf))"
-  proof (cases "free_variables qbf")
-    case Nil
-    thus ?thesis by simp
-  next
-    case (Cons x xs)
-    have "satisfiable qbf = satisfiable (existential_closure_aux qbf (x # xs))"
-      using sat_iff_ex_sat by (induction xs) auto
-    thus "satisfiable qbf = satisfiable (existential_closure_aux qbf (free_variables qbf))"
-      using Cons by simp
-  qed
-  thus ?thesis by simp
-qed
+  using sat_iff_ex_close_aux_sat by simp
 
 (*** Naive solver ***)
 
@@ -847,12 +778,12 @@ next
     thus ?thesis by simp
   next
     case False
-    have 0: "set (free_variables_aux (s \<union> {x}) q) = set (free_variables_aux s q) - {x}" for q s
-      using bound_subtract_symmetry[where ?new = "{x}"] by simp
-    have "set (free_variables (substitute_var z b (QBF.Ex x qbf)))
-                   = set (free_variables (substitute_var z b qbf)) - {x}" using 0 False by simp
+    hence "set (free_variables (substitute_var z b (QBF.Ex x qbf)))
+                   = set (free_variables (substitute_var z b qbf)) - {x}"
+      using bound_subtract_equiv[where ?new = "{x}"] by simp
     also have "... = set (free_variables (QBF.All z qbf)) - {x}" using 6 False by simp
-    also have "... = set (free_variables_aux {x, z} qbf)" using 0 by simp
+    also have "... = set (free_variables_aux {x, z} qbf)"
+      using bound_subtract_equiv[where ?new = "{x}"] by simp
     also have "... = set (free_variables (QBF.All z (QBF.Ex x qbf)))" by simp
     finally show ?thesis .
   qed
@@ -864,7 +795,7 @@ next
     thus ?thesis by simp
   next
     case False (* Similar to case "6, False" *)
-    thus ?thesis using 7 bound_subtract_symmetry[where ?new = "{y}"] by simp
+    thus ?thesis using 7 bound_subtract_equiv[where ?new = "{y}"] by simp
   qed
 qed
 
@@ -893,7 +824,7 @@ next
     thus ?thesis by simp
   next
     case False (* Similar to proof in set_free_vars_subst_all_eq *) 
-    thus ?thesis using 6 bound_subtract_symmetry[where ?new = "{x}"] by simp
+    thus ?thesis using 6 bound_subtract_equiv[where ?new = "{x}"] by simp
   qed
 next
   case (7 z b y qbf)
@@ -903,7 +834,7 @@ next
     thus ?thesis by simp
   next
     case False (* Similar to proof in set_free_vars_subst_all_eq *)
-    thus ?thesis using 7 bound_subtract_symmetry[where ?new = "{y}"] by simp
+    thus ?thesis using 7 bound_subtract_equiv[where ?new = "{y}"] by simp
   qed
 qed
 
@@ -923,39 +854,34 @@ next
   then show ?case by fastforce
 next
   case (Ex x1a qbf)
-  have 0: "set (free_variables_aux {x1a} q) = set (free_variables q) - {x1a}"
-    for q using bound_subtract_symmetry[where ?new = "{x1a}"] by simp
-  have "\<forall>b. set (free_variables (substitute_var x1a b (expand_quantifiers qbf)))
-            = set (free_variables (QBF.Ex x1a (expand_quantifiers qbf)))"
+  have "set (free_variables (expand_quantifiers (QBF.Ex x1a qbf)))
+                 = set (free_variables_aux {x1a} (expand_quantifiers qbf))"
     using set_free_vars_subst_ex_eq by simp
-  hence "set (free_variables (expand_quantifiers (QBF.Ex x1a qbf)))
-                 = set (free_variables_aux {x1a} (expand_quantifiers qbf))" by simp
-  also have "... = set (free_variables (expand_quantifiers qbf)) - {x1a}" using 0 by simp
+  also have "... = set (free_variables (expand_quantifiers qbf)) - {x1a}"
+    using bound_subtract_equiv[where ?new = "{x1a}"] by simp
   also have "... = set (free_variables qbf) - {x1a}" using Ex.IH by simp
-  also have "... = set (free_variables_aux {x1a} qbf)" using 0 by simp
+  also have "... = set (free_variables_aux {x1a} qbf)"
+    using bound_subtract_equiv[where ?new = "{x1a}"] by simp
   also have "... = set (free_variables (QBF.Ex x1a qbf))" by simp
   finally show ?case .
 next
   case (All x1a qbf) (* Similar to above *)
-  thus ?case using bound_subtract_symmetry[where ?new = "{x1a}"] set_free_vars_subst_all_eq by simp
+  thus ?case using bound_subtract_equiv[where ?new = "{x1a}"] set_free_vars_subst_all_eq by simp
 qed
 
 (* Any formula can be expanded to one with the three properties. *)
 fun expand_qbf :: "QBF \<Rightarrow> QBF" where
 "expand_qbf qbf = expand_quantifiers (existential_closure qbf)"
 
-(* The 3 properties from quantifier expansion are preserved. *)
+(* The important properties from the existential closure and quantifier expansion are preserved. *)
 lemma sat_iff_expand_qbf_sat: "satisfiable (expand_qbf qbf) \<longleftrightarrow> satisfiable qbf"
   using sat_iff_ex_close_sat sat_iff_expand_quants_sat by simp
 
 lemma expand_qbf_no_free: "set (free_variables (expand_qbf qbf)) = {}"
 proof -
-  have "set (free_variables (expand_qbf qbf))
-                 = set (free_variables (expand_quantifiers (existential_closure qbf)))" by simp
-  also have "... = set (free_variables (existential_closure qbf))"
+  have "set (free_variables (expand_qbf qbf)) = set (free_variables (existential_closure qbf))"
     using free_vars_inv_under_expand_quants by simp
-  also have "... = {}" using ex_closure_no_free by simp
-  finally show ?thesis .
+  thus ?thesis using ex_closure_no_free by metis
 qed
 
 lemma expand_qbf_no_quants: "qbf_quantifier_depth (expand_qbf qbf) = 0"
@@ -965,8 +891,8 @@ lemma expand_qbf_no_quants: "qbf_quantifier_depth (expand_qbf qbf) = 0"
 fun eval_qbf :: "QBF \<Rightarrow> bool option" where
 "eval_qbf (Var x) = None" |
 "eval_qbf (Neg qbf) = map_option (\<lambda>x. \<not>x) (eval_qbf qbf)" |
-"eval_qbf (Conj list) = map_option (list_all (\<lambda>x. x = True)) (sequence (map eval_qbf list))" |
-"eval_qbf (Disj list) = map_option (list_ex (\<lambda>x. x = True)) (sequence (map eval_qbf list))" |
+"eval_qbf (Conj list) = map_option (list_all id) (sequence (map eval_qbf list))" |
+"eval_qbf (Disj list) = map_option (list_ex id) (sequence (map eval_qbf list))" |
 "eval_qbf (Ex x qbf) = None" |
 "eval_qbf (All x qbf) = None"
 
@@ -985,7 +911,7 @@ next
   then show ?case by simp
 next
   case (Conj x)
-  have "\<forall>q \<in> set x. eval_qbf q = Some (qbf_semantics I q)" using Conj by (induction x) auto
+  hence "\<forall>q \<in> set x. eval_qbf q = Some (qbf_semantics I q)" by (induction x) auto
   thus "eval_qbf (Conj x) = Some (qbf_semantics I (Conj x))"
   proof (induction x)
     case Nil
@@ -998,7 +924,7 @@ next
     hence "sequence (map eval_qbf (y # ys)) = Some (map (qbf_semantics I) (y # ys))"
       using sequence_content by metis
     hence "eval_qbf (Conj (y # ys))
-          = Some (list_all (\<lambda>x. x = True) (map (qbf_semantics I) (y # ys)))"
+          = Some (list_all id (map (qbf_semantics I) (y # ys)))"
       by simp
     hence "eval_qbf (Conj (y # ys)) = Some (list_all (qbf_semantics I) (y # ys))"
       by (simp add: fun.map_ident list.pred_map)
@@ -1006,7 +932,7 @@ next
   qed
 next
   case (Disj x) (* Similar to previous case *)
-  have "\<forall>q \<in> set x. eval_qbf q = Some (qbf_semantics I q)" using Disj by (induction x) auto
+  hence "\<forall>q \<in> set x. eval_qbf q = Some (qbf_semantics I q)" by (induction x) auto
   thus "eval_qbf (Disj x) = Some (qbf_semantics I (Disj x))"
   proof (induction x)
     case Nil
@@ -1019,7 +945,7 @@ next
     hence "sequence (map eval_qbf (y # ys)) = Some (map (qbf_semantics I) (y # ys))"
       using sequence_content by metis
     hence "eval_qbf (Disj (y # ys))
-          = Some (list_ex (\<lambda>x. x = True) (map (qbf_semantics I) (y # ys)))"
+          = Some (list_ex id (map (qbf_semantics I) (y # ys)))"
       by simp
     hence "eval_qbf (Disj (y # ys)) = Some (list_ex (qbf_semantics I) (y # ys))"
       by (simp add: fun.map_ident pred_map_ex)
@@ -1226,10 +1152,10 @@ lemma pcnf_p_free_eq_vars_minus_prefix_aux:
   "pcnf_p qbf \<Longrightarrow> set (free_variables qbf) = set (variables qbf) - set (prefix_variables_aux qbf)"
 proof (induction qbf rule: prefix_variables_aux.induct)
   case (1 y qbf)
-  thus ?case using bound_subtract_symmetry[of "{}" "{y}" qbf] by force
+  thus ?case using bound_subtract_equiv[of "{}" "{y}" qbf] by force
 next
   case (2 x qbf)
-  thus ?case using bound_subtract_symmetry[of "{}" "{x}" qbf] by force
+  thus ?case using bound_subtract_equiv[of "{}" "{x}" qbf] by force
 next
   case ("3_1" v)
   hence False by simp
@@ -1316,7 +1242,7 @@ lemma pcnf_assign_vars_subseteq_vars_minus_lit:
 lemma add_ex_adds_prefix_var:
   "set (pcnf_prefix_variables (add_existential_to_front x pcnf))
   = set (pcnf_prefix_variables pcnf) \<union> {x}"
-  using convert_add_ex bound_subtract_symmetry[of "{}" "{x}" "convert pcnf"] by auto
+  using convert_add_ex bound_subtract_equiv[of "{}" "{x}" "convert pcnf"] by auto
 
 lemma add_ex_to_prefix_eq_add_to_front:
   "(add_existential_to_prefix x prefix, matrix) = add_existential_to_front x (prefix, matrix)"
@@ -1325,7 +1251,7 @@ lemma add_ex_to_prefix_eq_add_to_front:
 lemma add_all_adds_prefix_var:
   "set (pcnf_prefix_variables (add_universal_to_front x pcnf))
   = set (pcnf_prefix_variables pcnf) \<union> {x}"
-  using convert_add_all bound_subtract_symmetry[of "{}" "{x}" "convert pcnf"] by auto
+  using convert_add_all bound_subtract_equiv[of "{}" "{x}" "convert pcnf"] by auto
 
 lemma add_all_to_prefix_eq_add_to_front:
   "(add_universal_to_prefix x prefix, matrix) = add_universal_to_front x (prefix, matrix)"
@@ -1402,7 +1328,7 @@ lemma empty_prefix_cons_matrix_variables:
   = set (pcnf_variables (Empty, cls)) \<union> set (map lit_var cl)"
   using single_clause_variables by auto
 
-lemma matrix_shape_if_empty_prefix_no_variables:
+lemma matrix_shape_if_no_variables:
   "pcnf_variables (Empty, matrix) = [] \<Longrightarrow> (\<exists>n. matrix = replicate n [])"
 proof (induction matrix)
   case Nil
@@ -1503,6 +1429,11 @@ next
   then show ?case using qbf_semantics_substitute_eq_assign by fastforce
 qed
 
+theorem qbf_semantics_eq_pcnf_semantics':
+  assumes "pcnf_p qbf"
+  shows "qbf_semantics I qbf = pcnf_semantics I (the (convert_inv qbf))"
+  using qbf_semantics_eq_pcnf_semantics assms convert_inv_inv by simp
+
 lemma false_if_empty_clause_in_matrix:
   "[] \<in> set matrix \<Longrightarrow> pcnf_semantics I (prefix, matrix) = False"
   by (induction I "(prefix, matrix)" arbitrary: prefix rule: pcnf_semantics.induct)
@@ -1512,9 +1443,9 @@ lemma true_if_matrix_empty:
   "matrix = [] \<Longrightarrow> pcnf_semantics I (prefix, matrix) = True"
   by (induction I "(prefix, matrix)" arbitrary: prefix rule: pcnf_semantics.induct) auto
 
-lemma empty_clause_or_matrix_if_empty_prefix_no_variables:
+lemma empty_clause_or_matrix_if_no_variables:
   "pcnf_variables (Empty, matrix) = [] \<Longrightarrow> [] \<in> set matrix \<or> matrix = []"
-  using matrix_shape_if_empty_prefix_no_variables by fastforce
+  using matrix_shape_if_no_variables by fastforce
 
 (***
 Start of proof showing:
@@ -1957,8 +1888,8 @@ lemma interp_value_ignored_for_pcnf_N_assign:
 lemma sat_ex_first_iff_one_assign_sat:
   assumes "x \<notin> set (pcnf_prefix_variables (prefix_pop (ExistentialFirst (x, xs) qs), matrix))"
   shows "satisfiable (convert (ExistentialFirst (x, xs) qs, matrix))
-  \<longleftrightarrow> satisfiable (convert (pcnf_assign (P x) (prefix_pop (ExistentialFirst (x, xs) qs), matrix)))
-    \<or> satisfiable (convert (pcnf_assign (N x) (prefix_pop (ExistentialFirst (x, xs) qs), matrix)))"
+  \<longleftrightarrow> satisfiable (convert (pcnf_assign (P x) (ExistentialFirst (x, xs) qs, matrix)))
+    \<or> satisfiable (convert (pcnf_assign (N x) (ExistentialFirst (x, xs) qs, matrix)))"
 proof -
   let ?pre = "ExistentialFirst (x, xs) qs"
   have "satisfiable (convert (?pre, matrix))
@@ -1973,18 +1904,18 @@ proof -
          pcnf_semantics (I(x := False)) (prefix_pop ?pre, matrix_assign (N x) matrix))"
     using pcnf_semantics_disj_iff_matrix_assign_disj assms by blast
   also have "... \<longleftrightarrow>
-    (\<exists>I. pcnf_semantics (I(x := True)) (pcnf_assign (P x) (prefix_pop ?pre, matrix))) \<or>
-    (\<exists>I. pcnf_semantics (I(x := False)) (pcnf_assign (N x) (prefix_pop ?pre, matrix)))"
+    (\<exists>I. pcnf_semantics (I(x := True)) (pcnf_assign (P x) (?pre, matrix))) \<or>
+    (\<exists>I. pcnf_semantics (I(x := False)) (pcnf_assign (N x) (?pre, matrix)))"
     using pcnf_assign_free_eq_matrix_assgn[of "P x"] pcnf_assign_free_eq_matrix_assgn[of "N x"]
       assms by auto
   also have "... \<longleftrightarrow>
-    (\<exists>I. pcnf_semantics I (pcnf_assign (P x) (prefix_pop ?pre, matrix))) \<or>
-    (\<exists>I. pcnf_semantics I (pcnf_assign (N x) (prefix_pop ?pre, matrix)))"
+    (\<exists>I. pcnf_semantics I (pcnf_assign (P x) (?pre, matrix))) \<or>
+    (\<exists>I. pcnf_semantics I (pcnf_assign (N x) (?pre, matrix)))"
     using interp_value_ignored_for_pcnf_N_assign interp_value_ignored_for_pcnf_P_assign
     by blast
   also have "... \<longleftrightarrow>
-    satisfiable (convert (pcnf_assign (P x) (prefix_pop ?pre, matrix))) \<or>
-    satisfiable (convert (pcnf_assign (N x) (prefix_pop ?pre, matrix)))"
+    satisfiable (convert (pcnf_assign (P x) (?pre, matrix))) \<or>
+    satisfiable (convert (pcnf_assign (N x) (?pre, matrix)))"
     using satisfiable_def qbf_semantics_eq_pcnf_semantics by simp
   finally show ?thesis .
 qed
@@ -1996,8 +1927,8 @@ theorem sat_ex_first_iff_assign_disj_sat:
   assumes "x \<notin> set (pcnf_prefix_variables (prefix_pop (ExistentialFirst (x, xs) qs), matrix))"
   shows "satisfiable (convert (ExistentialFirst (x, xs) qs, matrix))
   \<longleftrightarrow> satisfiable (Disj
-    [convert (pcnf_assign (P x) (prefix_pop (ExistentialFirst (x, xs) qs), matrix)),
-     convert (pcnf_assign (N x) (prefix_pop (ExistentialFirst (x, xs) qs), matrix))])"
+    [convert (pcnf_assign (P x) (ExistentialFirst (x, xs) qs, matrix)),
+     convert (pcnf_assign (N x) (ExistentialFirst (x, xs) qs, matrix))])"
   using assms sat_ex_first_iff_one_assign_sat satisfiable_def
     qbf_semantics_eq_pcnf_semantics by auto
 
@@ -2008,8 +1939,8 @@ theorem sat_all_first_iff_assign_conj_sat:
   assumes "y \<notin> set (pcnf_prefix_variables (prefix_pop (UniversalFirst (y, ys) qs), matrix))"
   shows "satisfiable (convert (UniversalFirst (y, ys) qs, matrix))
   \<longleftrightarrow> satisfiable (Conj
-    [convert (pcnf_assign (P y) (prefix_pop (UniversalFirst (y, ys) qs), matrix)),
-     convert (pcnf_assign (N y) (prefix_pop (UniversalFirst (y, ys) qs), matrix))])"
+    [convert (pcnf_assign (P y) (UniversalFirst (y, ys) qs, matrix)),
+     convert (pcnf_assign (N y) (UniversalFirst (y, ys) qs, matrix))])"
 proof -
   let ?pre = "UniversalFirst (y, ys) qs"
   have "satisfiable (convert (?pre, matrix))
@@ -2024,23 +1955,22 @@ proof -
          pcnf_semantics (I(y := False)) (prefix_pop ?pre, matrix_assign (N y) matrix))"
     using pcnf_semantics_conj_iff_matrix_assign_conj assms by blast
   also have "... =
-    (\<exists>I. pcnf_semantics (I(y := True)) (pcnf_assign (P y) (prefix_pop ?pre, matrix)) \<and>
-         pcnf_semantics (I(y := False)) (pcnf_assign (N y) (prefix_pop ?pre, matrix)))"
+    (\<exists>I. pcnf_semantics (I(y := True)) (pcnf_assign (P y) (?pre, matrix)) \<and>
+         pcnf_semantics (I(y := False)) (pcnf_assign (N y) (?pre, matrix)))"
     using pcnf_assign_free_eq_matrix_assgn[of "P y"] pcnf_assign_free_eq_matrix_assgn[of "N y"]
       assms by simp
   also have "... =
-    (\<exists>I. pcnf_semantics I (pcnf_assign (P y) (prefix_pop ?pre, matrix)) \<and>
-         pcnf_semantics I (pcnf_assign (N y) (prefix_pop ?pre, matrix)))"
+    (\<exists>I. pcnf_semantics I (pcnf_assign (P y) (?pre, matrix)) \<and>
+         pcnf_semantics I (pcnf_assign (N y) (?pre, matrix)))"
     using interp_value_ignored_for_pcnf_N_assign interp_value_ignored_for_pcnf_P_assign by blast
   also have "... =
-    (\<exists>I. qbf_semantics I (convert (pcnf_assign (P y) (prefix_pop ?pre, matrix))) \<and>
-         qbf_semantics I (convert (pcnf_assign (N y) (prefix_pop ?pre, matrix))))"
-    using interp_value_ignored_for_pcnf_N_assign interp_value_ignored_for_pcnf_P_assign
-      qbf_semantics_eq_pcnf_semantics by blast
+    (\<exists>I. qbf_semantics I (convert (pcnf_assign (P y) (?pre, matrix))) \<and>
+         qbf_semantics I (convert (pcnf_assign (N y) (?pre, matrix))))"
+      using qbf_semantics_eq_pcnf_semantics by blast
   also have "... =
     satisfiable (Conj
-      [convert (pcnf_assign (P y) (prefix_pop ?pre, matrix)),
-       convert (pcnf_assign (N y) (prefix_pop ?pre, matrix))])"
+      [convert (pcnf_assign (P y) (?pre, matrix)),
+       convert (pcnf_assign (N y) (?pre, matrix))])"
     unfolding satisfiable_def by simp
   finally show ?thesis .
 qed
@@ -2475,8 +2405,7 @@ theorem sat_ex_first_iff_assign_disj_sat':
   \<longleftrightarrow> satisfiable (Disj
     [convert (pcnf_assign (P x) (ExistentialFirst (x, xs) qs, matrix)),
      convert (pcnf_assign (N x) (ExistentialFirst (x, xs) qs, matrix))])"
-  using assms cleansed_prefix_first_ex_unique sat_ex_first_iff_assign_disj_sat
-    pcnf_assign_p_ex_eq pcnf_assign_n_ex_eq by auto
+  using assms cleansed_prefix_first_ex_unique sat_ex_first_iff_assign_disj_sat by auto
 
 theorem sat_all_first_iff_assign_conj_sat':
   assumes "cleansed_p (UniversalFirst (y, ys) qs, matrix)"
@@ -2484,8 +2413,7 @@ theorem sat_all_first_iff_assign_conj_sat':
   \<longleftrightarrow> satisfiable (Conj
     [convert (pcnf_assign (P y) (UniversalFirst (y, ys) qs, matrix)),
      convert (pcnf_assign (N y) (UniversalFirst (y, ys) qs, matrix))])"
-  using assms cleansed_prefix_first_all_unique sat_all_first_iff_assign_conj_sat
-    pcnf_assign_p_all_eq pcnf_assign_n_all_eq by auto
+  using assms cleansed_prefix_first_all_unique sat_all_first_iff_assign_conj_sat by auto
 
 (* search based solver *)
 lemma add_all_inc_prefix_measure:
@@ -2658,7 +2586,7 @@ proof (induction pcnf rule: search.induct)
         hence "prefix = Empty" by (induction prefix) auto
         hence False using `matrix \<noteq> []` `[] \<notin> set matrix`
             `pcnf_free_variables (prefix, matrix) = []`
-            empty_clause_or_matrix_if_empty_prefix_no_variables
+            empty_clause_or_matrix_if_no_variables
             no_vars_if_no_free_empty_prefix by blast
         then show ?thesis by simp
       next
@@ -2669,7 +2597,7 @@ proof (induction pcnf rule: search.induct)
           hence "prefix = Empty" by (induction prefix) auto
           hence False using `matrix \<noteq> []` `[] \<notin> set matrix`
               `pcnf_free_variables (prefix, matrix) = []`
-              empty_clause_or_matrix_if_empty_prefix_no_variables
+              empty_clause_or_matrix_if_no_variables
               no_vars_if_no_free_empty_prefix by blast
           then show ?thesis by simp
         next
@@ -2735,7 +2663,7 @@ proof (induction pcnf rule: search.induct)
         hence "prefix = Empty" by (induction prefix) auto
         hence False using `matrix \<noteq> []` `[] \<notin> set matrix`
             `pcnf_free_variables (prefix, matrix) = []`
-            empty_clause_or_matrix_if_empty_prefix_no_variables
+            empty_clause_or_matrix_if_no_variables
             no_vars_if_no_free_empty_prefix by blast
         then show ?thesis by simp
       next
@@ -2746,7 +2674,7 @@ proof (induction pcnf rule: search.induct)
           hence "prefix = Empty" by (induction prefix) auto
           hence False using `matrix \<noteq> []` `[] \<notin> set matrix`
               `pcnf_free_variables (prefix, matrix) = []`
-              empty_clause_or_matrix_if_empty_prefix_no_variables
+              empty_clause_or_matrix_if_no_variables
               no_vars_if_no_free_empty_prefix by blast
           then show ?thesis by simp
         next
