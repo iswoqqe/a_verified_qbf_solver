@@ -3,8 +3,10 @@ session a_verified_qbf_solver = HOL +
   sessions
     "HOL-Library"
   theories
-    Solver
+    NaiveSolver
+	PCNF
 	Parser
+    SearchSolver
 	SolverExport
   document_files
     "root.tex"

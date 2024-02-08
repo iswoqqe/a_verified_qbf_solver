@@ -1,5 +1,7 @@
+section \<open>Solver Export\<close>
+
 theory SolverExport
-  imports Solver Parser "HOL-Library.Code_Abstract_Char" "HOL-Library.Code_Target_Numeral" "HOL-Library.RBT_Set"
+  imports NaiveSolver PCNF SearchSolver Parser "HOL-Library.Code_Abstract_Char" "HOL-Library.Code_Target_Numeral" "HOL-Library.RBT_Set"
 begin
 
 fun run_naive_solver :: "String.literal \<Rightarrow> bool" where
@@ -8,6 +10,7 @@ fun run_naive_solver :: "String.literal \<Rightarrow> bool" where
 fun run_search_solver :: "String.literal \<Rightarrow> bool" where
 "run_search_solver qdimacs_str = search_solver (the (parse qdimacs_str))"
 
+(*<*)
 value "run_naive_solver (String.implode
 ''c an extension of the example from the QDIMACS specification
 c multiple
@@ -56,8 +59,10 @@ e 1 2 3 4 5 6 7 0
 7 0
 -7 6 0
 '')"
+(*>*)
+text_raw \<open>\newline\newline\<close>
 
-code_printing
+code_printing \<comment> \<open>COMMENT: This fixes a off-by-one error in the OCaml export.\<close>
   code_module "Str_Literal" \<rightharpoonup>
     (OCaml) \<open>module Str_Literal =
 struct

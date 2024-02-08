@@ -1,5 +1,7 @@
+section \<open>QDIMACS Parser\<close>
+
 theory Parser
-  imports Main Solver
+  imports Main PCNF
 begin
 
 type_synonym 'a parser = "string \<Rightarrow> ('a \<times> string) option"
@@ -110,16 +112,19 @@ lemma decreasing_pnum_raw [simp]: "pnum_raw s = Some (n, s') \<Longrightarrow> l
       pnum_raw.simps(2))
   done
 
-(* Parse pnum *)
+(* Parse pnum *)(*<*)(*>*)
 fun pnum :: "nat parser" where
 "pnum str = (case pnum_raw str of
   None \<Rightarrow> None |
   Some (n, str') \<Rightarrow> if n = 0 then None else Some (n, str'))"
 
+(*<*)
 value "pnum ''123''"
 value "pnum ''-123''"
 value "pnum ''0123''"
 value "pnum ''0''"
+(*>*)
+text_raw \<open>\newline\newline\<close>
 
 lemma decreasing_pnum [simp]:
   assumes "pnum s = Some (n, s')"
@@ -134,8 +139,8 @@ next
   then show ?thesis using Some assms by (cases "n' = 0") auto
 qed
 
-(* Parse <literal> ::= <num>; no whitespace *)
-fun literal :: "Solver.literal parser" where
+(* Parse <literal> ::= <num>; no whitespace *)(*<*)(*>*)
+fun literal :: "PCNF.literal parser" where
 "literal str = (case match ''-'' str of
   None \<Rightarrow> (case pnum str of
     None \<Rightarrow> None |
@@ -144,11 +149,14 @@ fun literal :: "Solver.literal parser" where
     None \<Rightarrow> None |
     Some (n, str'') \<Rightarrow> Some (N n, str'')))"
 
+(*<*)
 value "literal ''123''"
 value "literal ''-123''"
 value "literal ''- 123''"
 value "literal ''0123''"
 value "literal ''0''"
+(*>*)
+text_raw \<open>\newline\newline\<close>
 
 lemma decreasing_literal [simp]:
   assumes "literal s = Some (l, s')"
@@ -164,8 +172,8 @@ next
   ultimately show "length s' < length s" by simp
 qed
 
-(* Parse <clause> ::= <literal> <clause> | <literal> 0 EOL; whitespace allowed *)
-fun clause :: "Solver.clause parser" where
+(* Parse <clause> ::= <literal> <clause> | <literal> 0 EOL; whitespace allowed *)(*<*)(*>*)
+fun clause :: "PCNF.clause parser" where
 "clause str = (case literal (trim_ws str) of
   None \<Rightarrow> None |
   Some (l, str') \<Rightarrow>
@@ -179,12 +187,15 @@ fun clause :: "Solver.clause parser" where
               Some (_, str''') \<Rightarrow> Some (Cons l Nil, str'''))) |
       Some (cl, str'') \<Rightarrow> Some (Cons l cl, str'')))"
 
+(*<*)
 value "clause ''1 2 -3 4 0 \<newline>''"
 value "clause ''1 2 -3   4   0 \<newline>''"
 value "clause ''1 2 -3 40 \<newline>''"
 value "clause ''1 2 -3 4 0\<newline>''"
 value "clause ''1 2 -3 4 0''"
 value "clause '' 1 2 -3 4 0 \<newline>''"
+(*>*)
+text_raw \<open>\newline\newline\<close>
 
 lemma decreasing_clause [simp]:
   assumes "clause s = Some (c, s')"
@@ -239,8 +250,8 @@ proof (induction s arbitrary: c rule: clause.induct)
   qed
 qed
 
-(* Parse <clause_list> ::= <clause> <clause_list> | <clause>; no whitespace*)
-fun clause_list :: "Solver.matrix parser" where
+(* Parse <clause_list> ::= <clause> <clause_list> | <clause>; no whitespace*)(*<*)(*>*)
+fun clause_list :: "PCNF.matrix parser" where
 "clause_list str = (case clause str of
   None \<Rightarrow> None |
   Some (cl, str') \<Rightarrow>
@@ -248,9 +259,12 @@ fun clause_list :: "Solver.matrix parser" where
       None \<Rightarrow> Some (Cons cl Nil, str') |
       Some (cls, str'') \<Rightarrow> Some (Cons cl cls, str'')))"
 
+(*<*)
 value "clause_list ''1 2 -3 0\<newline>1 -2 3 0\<newline>-1 2  3 0\<newline>''"
 value "clause_list ''1 2 -3 \<newline>1 -2 3 0\<newline>-1 2  3 0\<newline>''"
 value "clause_list ''1 2 -3 0 \<newline> 1 -2 3 0\<newline>-1 2  3 0\<newline>''"
+(*>*)
+text_raw \<open>\newline\newline\<close>
 
 lemma decreasing_clause_list [simp]:
   assumes "clause_list s = Some (cls, s')"
@@ -284,17 +298,20 @@ proof (induction s arbitrary: cls rule: clause_list.induct)
   qed
 qed
 
-(* Parse <matrix> ::= <clause_list>; no whitespace *)
-fun matrix :: "Solver.matrix parser" where
+(* Parse <matrix> ::= <clause_list>; no whitespace *)(*<*)(*>*)
+fun matrix :: "PCNF.matrix parser" where
 "matrix s = clause_list s"
 
+(*<*)
 value "matrix ''1 2 -3 0\<newline>1 -2 3 0\<newline>-1 2  3 0\<newline>''"
 value "matrix ''1 2 -3 \<newline>1 -2 3 0\<newline>-1 2  3 0\<newline>''"
 value "matrix ''1 2 -3 0 \<newline> 1 -2 3 0\<newline>-1 2  3 0\<newline>''"
+(*>*)
+text_raw \<open>\newline\newline\<close>
 
 lemma decreasing_matrix [simp]: "matrix s = Some (mat, s') \<Longrightarrow> length s' < length s" by simp
 
-(* Parse <atom_set> ::= <pnum> <atom_set> | <pnum>; whitespace allowed *)
+(* Parse <atom_set> ::= <pnum> <atom_set> | <pnum>; whitespace allowed *)(*<*)(*>*)
 fun atom_set :: "(nat \<times> nat list) parser" where
 "atom_set str = (case pnum (trim_ws str) of
   None \<Rightarrow> None |
@@ -303,6 +320,7 @@ fun atom_set :: "(nat \<times> nat list) parser" where
       None \<Rightarrow> Some ((a, Nil), str') |
       Some ((a', as), str'') \<Rightarrow> Some ((a, Cons a' as), str'')))"
 
+(*<*)
 value "atom_set ''1 2 3 4''"
 value "atom_set ''1 2 -3 4''"
 value "atom_set ''1 2 3   4   0 \<newline>''"
@@ -310,6 +328,8 @@ value "atom_set ''1 2 3 40''"
 value "atom_set ''1 2 3 4 0\<newline>''"
 value "atom_set ''1 2 3 4''"
 value "atom_set '' 1   2  3 4 0 \<newline>  ''"
+(*>*)
+text_raw \<open>\newline\newline\<close>
 
 lemma decreasing_atom_set [simp]:
   assumes "atom_set s = Some (as, s')"
@@ -345,7 +365,7 @@ proof (induction s arbitrary: as rule: atom_set.induct)
   qed
 qed
 
-(* Parse <quantifier> ::= e | a; no whitespace *)
+(* Parse <quantifier> ::= e | a; no whitespace *)(*<*)(*>*)
 datatype quant = Universal | Existential
 fun quantifier :: "quant parser" where
 "quantifier str = (case match ''e'' str of
@@ -354,10 +374,13 @@ fun quantifier :: "quant parser" where
     Some (_, str') \<Rightarrow> Some (Universal, str')) |
   Some (_, str') \<Rightarrow> Some (Existential, str'))"
 
+(*<*)
 value "quantifier ''a 1 2 3''"
 value "quantifier ''e 1 2 3''"
 value "quantifier ''a 1 2 3''"
 value "quantifier '' e 1 2 3''"
+(*>*)
+text_raw \<open>\newline\newline\<close>
 
 lemma non_increasing_quant [simp]:
   assumes "quantifier s = Some (q, s')"
@@ -384,7 +407,7 @@ next
   thus "length s' \<le> length s" using Some_a a_def by simp
 qed
 
-(* Parse <quant_set> ::= <quantifier> <atom_set> 0 EOL; whitespace allowed *)
+(* Parse <quant_set> ::= <quantifier> <atom_set> 0 EOL; whitespace allowed *)(*<*)(*>*)
 fun quant_set :: "(quant \<times> (nat \<times> nat list)) parser" where
 "quant_set str = (case quantifier (trim_ws str) of
   None \<Rightarrow> None |
@@ -399,9 +422,12 @@ fun quant_set :: "(quant \<times> (nat \<times> nat list)) parser" where
               None \<Rightarrow> None |
               Some (_, str'''') \<Rightarrow> Some ((q, as), str'''')))))"
 
+(*<*)
 value "quant_set ''e 1 2  3 0\<newline>''"
 value "quant_set ''a 1 2 3 0\<newline>''"
 value "quant_set ''a 1 2 -3 0\<newline>''"
+(*>*)
+text_raw \<open>\newline\newline\<close>
 
 lemma decreasing_quant_set [simp]:
   assumes "quant_set s = Some (q_set, s')"
@@ -450,7 +476,7 @@ next
   qed
 qed
 
-(* Parse <quant_sets> ::= <quant_set> <quant_sets> | <quant_set>; no whitespace *)
+(* Parse <quant_sets> ::= <quant_set> <quant_sets> | <quant_set>; no whitespace *)(*<*)(*>*)
 fun quant_sets :: "(quant \<times> (nat \<times> nat list)) list parser" where
 "quant_sets str = (case quant_set str of
   None \<Rightarrow> None |
@@ -459,8 +485,11 @@ fun quant_sets :: "(quant \<times> (nat \<times> nat list)) list parser" where
       None \<Rightarrow> Some (Cons q_set Nil, str') |
       Some (q_sets, str'') \<Rightarrow> Some (Cons q_set q_sets, str'')))"
 
+(*<*)
 value "quant_sets ''a 1 2 3 0\<newline>e 4 5 6 0\<newline>a 7 8  9 0 \<newline>''"
 value "quant_sets ''a 1 2 3 0\<newline>  e  4  5  6  0 \<newline>e 7 8  9 0 \<newline>''"
+(*>*)
+text_raw \<open>\newline\newline\<close>
 
 lemma decreasing_quant_sets [simp]:
   assumes "quant_sets s = Some (q_sets, s')"
@@ -494,7 +523,7 @@ proof (induction s arbitrary: q_sets rule: quant_sets.induct)
   qed
 qed
 
-fun convert_quant_sets :: "(quant \<times> (nat \<times> nat list)) list \<Rightarrow> Solver.prefix option" where
+fun convert_quant_sets :: "(quant \<times> (nat \<times> nat list)) list \<Rightarrow> PCNF.prefix option" where
 "convert_quant_sets Nil = Some Empty" |
 "convert_quant_sets (Cons (Universal, as) qs) =
   (case convert_quant_sets qs of
@@ -509,8 +538,8 @@ fun convert_quant_sets :: "(quant \<times> (nat \<times> nat list)) list \<Right
     Some (ExistentialFirst _ _) \<Rightarrow> None |
     Some (UniversalFirst as' qs') \<Rightarrow> Some (ExistentialFirst as (Cons as' qs')))"
 
-(* Parser <prefix> ::= [<quant_sets>]; no whitespace *)
-fun prefix :: "Solver.prefix parser" where
+(* Parser <prefix> ::= [<quant_sets>]; no whitespace *)(*<*)(*>*)
+fun prefix :: "PCNF.prefix parser" where
 "prefix str = (case quant_sets str of
   None \<Rightarrow> Some (Empty, str) |
   Some (pre, str') \<Rightarrow>
@@ -518,8 +547,11 @@ fun prefix :: "Solver.prefix parser" where
       None \<Rightarrow> None |
       Some converted \<Rightarrow> Some (converted, str')))"
 
+(*<*)
 value "prefix ''a 1 2 3 0\<newline>e 4 5 6 0\<newline>a 7 8  9 0 \<newline>''"
 value "prefix ''a 1 2 3 0\<newline>e 4 5 6 0\<newline>e 7 8  9 0 \<newline>''"
+(*>*)
+text_raw \<open>\newline\newline\<close>
 
 lemma non_increasing_prefix [simp]:
   assumes "prefix s = Some (pre, s')"
@@ -537,7 +569,7 @@ next
   ultimately show "length s' \<le> length s" by simp
 qed
 
-(* Parser <problem_line> ::= p cnf <pnum> <pnum> EOL; whitespace allowed *)
+(* Parser <problem_line> ::= p cnf <pnum> <pnum> EOL; whitespace allowed *)(*<*)(*>*)
 fun problem_line :: "(nat \<times> nat) parser" where
 "problem_line str = (case match ''p'' (trim_ws str) of
   None \<Rightarrow> None |
@@ -555,10 +587,13 @@ fun problem_line :: "(nat \<times> nat) parser" where
                   None \<Rightarrow> None |
                   Some (_, str5) \<Rightarrow> Some ((lits, clauses), str5))))))"
 
+(*<*)
 value "problem_line ''p cnf 123 321\<newline>''"
 value "problem_line ''p   cnf   123 321\<newline>''"
 value "problem_line ''p cnf 123 -321\<newline>''"
 value "problem_line ''  p cnf 123 321\<newline>''"
+(*>*)
+text_raw \<open>\newline\newline\<close>
 
 lemma decreasing_problem_line [simp]:
   assumes "problem_line s = Some (res, s')"
@@ -618,7 +653,7 @@ next
   qed
 qed
 
-(* Parse <text> *)
+(* Parse <text> *)(*<*)(*>*)
 fun consume_text :: "unit parser" where
 "consume_text Nil = Some ((), Nil)" |
 "consume_text (Cons x xs) = (if x = CHR ''\<newline>'' then Some ((), Cons x xs) else consume_text xs)"
@@ -626,7 +661,7 @@ fun consume_text :: "unit parser" where
 lemma non_increasing_consume_text [simp]: "consume_text s = Some ((), s') \<Longrightarrow> length s' \<le> length s"
   by (induction s rule: consume_text.induct) (((case_tac "x = CHR ''\<newline>''"),auto)+)
 
-(* Parse <comment_line> ::= c <text> EOL; whitespace allowed *)
+(* Parse <comment_line> ::= c <text> EOL; whitespace allowed *)(*<*)(*>*)
 fun comment_line :: "unit parser" where
 "comment_line str = (case match ''c'' (trim_ws str) of
   None \<Rightarrow> None |
@@ -638,9 +673,12 @@ fun comment_line :: "unit parser" where
           None \<Rightarrow> None |
           Some (_, str''') \<Rightarrow> Some ((), str'''))))"
 
+(*<*)
 value "comment_line ''c e 1 2 3\<newline>e 1 2 3''"
 value "comment_line ''e 1 2 3\<newline>e 1 2 3''"
 value "comment_line ''  c  e  1  2   3  \<newline>e 1 2 3''"
+(*>*)
+text_raw \<open>\newline\newline\<close>
 
 lemma decreasing_comment_line [simp]:
   assumes "comment_line s = Some ((), s')"
@@ -680,7 +718,7 @@ next
   qed
 qed
 
-(* Parse <comment_lines> ::= <comment_line> <comment_lines> | <comment_line>; no whitespace *)
+(* Parse <comment_lines> ::= <comment_line> <comment_lines> | <comment_line>; no whitespace *)(*<*)(*>*)
 fun comment_lines :: "unit parser" where
 "comment_lines str = (case comment_line str of
   None \<Rightarrow> None |
@@ -689,8 +727,11 @@ fun comment_lines :: "unit parser" where
       None \<Rightarrow> Some ((), str') |
       Some (_, str'') \<Rightarrow> Some ((), str'')))"
 
+(*<*)
 value "comment_lines ''c a comment\<newline>c another comment\<newline>''"
 value "comment_lines ''c a comment\<newline>  c another comment\<newline>''"
+(*>*)
+text_raw \<open>\newline\newline\<close>
 
 lemma decreasing_comment_lines [simp]:
   assumes "comment_lines s = Some ((), s')"
@@ -724,14 +765,17 @@ proof (induction s rule: comment_lines.induct)
   qed
 qed
 
-(* Parse <preamble> ::= [<comment_lines>] <problem_line>; no whitespace *)
+(* Parse <preamble> ::= [<comment_lines>] <problem_line>; no whitespace *)(*<*)(*>*)
 fun preamble :: "(nat \<times> nat) parser" where
 "preamble str = (case comment_lines str of
   None \<Rightarrow> problem_line str |
   Some (_, str') \<Rightarrow> problem_line str')"
 
+(*<*)
 value "preamble ''c an example\<newline>p cnf 4 5\<newline>''"
 value "preamble '' c  an  example\<newline>  p cnf 4 5\<newline>''"
+(*>*)
+text_raw \<open>\newline\newline\<close>
 
 lemma decreasing_preamble [simp]:
   assumes "preamble s = Some (p, s')"
@@ -749,7 +793,7 @@ next
   ultimately show "length s' < length s" by simp
 qed
 
-(* Check if all input has been consumed; used instead of EOF token *)
+(* Check if all input has been consumed; used instead of EOF token *)(*<*)(*>*)
 fun eof :: "unit parser" where
 "eof Nil = Some ((), Nil)" |
 "eof (Cons x xs) = None"
@@ -757,8 +801,8 @@ fun eof :: "unit parser" where
 lemma eof_nil [simp]: "eof s = Some ((), s') \<Longrightarrow> s' = Nil"
   by (cases s) auto
 
-(* Parser <input> ::= <preamble> <prefix> <matrix> EOF; no whitespace *)
-fun input :: "Solver.pcnf parser" where
+(* Parser <input> ::= <preamble> <prefix> <matrix> EOF; no whitespace *)(*<*)(*>*)
+fun input :: "PCNF.pcnf parser" where
 "input str = (case preamble str of
   None \<Rightarrow> None |
   Some ((lits, clauses), str') \<Rightarrow>
@@ -772,6 +816,7 @@ fun input :: "Solver.pcnf parser" where
               None \<Rightarrow> None |
               Some (_, str'''') \<Rightarrow> Some ((pre, mat), str'''')))))"
 
+(*<*)
 value "input
 ''c an example from the QDIMACS specification
 c multiple
@@ -799,6 +844,8 @@ e 21 22 23 24 0
 40 -13 -24 0
 12 -23 -24 0
 ''"
+(*>*)
+text_raw \<open>\newline\newline\<close>
 
 lemma input_nil [simp]:
   assumes "input s = Some (p, s')"
@@ -844,10 +891,11 @@ next
   qed
 qed
 
-(* Parse (superset of) QDIMACS files *)
+(* Parse (superset of) QDIMACS files *)(*<*)(*>*)
 fun parse :: "String.literal \<Rightarrow> pcnf option" where
 "parse str = map_option fst (input (String.explode str))"
 
+(*<*)
 value "parse (String.implode
 ''c an example from the QDIMACS specification
 c multiple
@@ -875,5 +923,7 @@ e 21 22 23 24 0
 40 -13 -24 0
 12 -23 -24 0
 '')"
+(*>*)
+text_raw \<open>\newline\newline\<close>
 
 end
