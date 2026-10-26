@@ -1,4 +1,5 @@
 #!/bin/bash
+shopt -s extglob
 
 if [[ $1 != +([0-9]) ]]
 then
