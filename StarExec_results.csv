@@ -1,0 +1,51 @@
+instance,naive_solver_sml,naive_solver_ocaml,naive_solver_haskell,naive_solver_scala,search_solver_sml,search_solver_ocaml,search_solver_haskell,search_solver_scala,caqe
+domino2.qdimacs,0.004096,0.004599,0.00555,0.825704,0.003602,0.004365,0.004688,0.796135,0.013353
+domino2i.qdimacs,0.004216,0.004594,0.005572,0.823078,0.003692,0.004592,0.004763,0.797432,0.008164
+domino3.qdimacs,0.007834,0.008394,0.01106,0.886359,0.003821,0.004956,0.005064,0.802447,0.007747
+domino3i.qdimacs,0.007228,0.00729,0.010985,0.910558,0.003704,0.004538,0.005031,0.804835,0.008518
+domino4.qdimacs,oom,timeout,timeout,timeout,0.008827,0.01068,0.009955,1.41548,0.009581
+domino4i.qdimacs,oom,timeout,timeout,timeout,0.00899,0.010226,0.010587,1.12748,0.008991
+domino5.qdimacs,oom,timeout,timeout,timeout,0.029154,0.035554,0.031512,1.57127,0.010724
+domino5i.qdimacs,oom,timeout,timeout,timeout,0.030117,0.035896,0.032827,1.64,0.008432
+domino6.qdimacs,oom,timeout,timeout,timeout,13.0181,18.1301,14.0286,34.7084,0.012725
+domino6i.qdimacs,oom,timeout,timeout,timeout,12.8557,17.8026,13.7722,33.1399,0.015686
+domino7.qdimacs,oom,timeout,timeout,timeout,139.567,214.772,155.105,287.157,0.0129
+domino7i.qdimacs,oom,timeout,timeout,timeout,138.631,208.693,153.255,308.394,0.017837
+domino8.qdimacs,oom,timeout,timeout,stack overflow,timeout,timeout,timeout,stack overflow,3.27326
+domino8i.qdimacs,oom,timeout,timeout,stack overflow,timeout,timeout,timeout,stack overflow,0.272657
+domino9.qdimacs,oom,timeout,timeout,stack overflow,timeout,timeout,timeout,stack overflow,28.542
+domino9i.qdimacs,oom,timeout,timeout,stack overflow,timeout,timeout,timeout,stack overflow,11.8224
+domino10.qdimacs,oom,timeout,timeout,stack overflow,timeout,timeout,timeout,stack overflow,230.636
+domino10i.qdimacs,oom,timeout,timeout,stack overflow,timeout,timeout,timeout,stack overflow,timeout
+xor1_sat.qdimacs,0.003764,0.004511,0.005388,0.779112,0.003545,0.004473,0.00454,0.786084,0.00787
+xor1_unsat.qdimacs,0.00359,0.004466,0.004576,0.784089,0.003601,0.004426,0.004719,0.785586,0.007972
+xor2_sat.qdimacs,0.004238,0.004688,0.005145,0.789909,0.003564,0.004415,0.004703,0.799017,0.008902
+xor2_unsat.qdimacs,0.003714,0.004893,0.010516,0.807545,0.003585,0.004524,0.004658,0.7912,0.00835
+xor3_sat.qdimacs,0.005095,0.005619,0.007482,0.86561,0.00369,0.004587,0.005006,0.807715,0.008625
+xor3_unsat.qdimacs,0.005419,0.005914,0.007558,0.884359,0.003681,0.004657,0.004793,0.817597,0.010309
+xor4_sat.qdimacs,0.012538,0.014492,0.025495,1.01012,0.003834,0.004509,0.004893,0.826751,0.008593
+xor4_unsat.qdimacs,0.013435,0.02502,0.028357,0.982877,0.003701,0.004472,0.005007,0.821499,0.013617
+xor5_sat.qdimacs,0.052822,0.070217,0.155837,1.29133,0.003916,0.004829,0.005035,0.848099,0.009315
+xor5_unsat.qdimacs,0.058135,0.077413,0.171106,1.29587,0.003976,0.004617,0.005314,0.851168,0.013826
+xor6_sat.qdimacs,0.264197,0.541426,0.981361,1.88362,0.004077,0.005154,0.005703,0.883222,0.009787
+xor6_unsat.qdimacs,0.283344,0.5894,1.03223,1.88617,0.004295,0.004696,0.005542,0.872822,0.015789
+xor7_sat.qdimacs,1.56001,3.54155,5.66529,3.65967,0.004541,0.005819,0.005823,0.922409,0.00975
+xor7_unsat.qdimacs,1.76509,3.84553,5.90356,3.86175,0.004466,0.004856,0.005857,0.917013,0.017777
+xor8_sat.qdimacs,8.72671,20.3925,29.2366,12.5108,0.005334,0.006942,0.006583,0.970209,0.010358
+xor8_unsat.qdimacs,9.3678,21.8699,31.2558,12.9384,0.005082,0.006873,0.012829,0.995763,0.019039
+xor9_sat.qdimacs,44.92,108.92,146.857,100.654,0.006241,0.007161,0.00777,1.04253,0.010499
+xor9_unsat.qdimacs,48.3096,117.003,157.632,111.32,0.005863,0.006952,0.007964,1.0184,0.021611
+xor10_sat.qdimacs,oom,563.585,728.619,timeout,0.00782,0.008708,0.010117,1.12791,0.011148
+xor10_unsat.qdimacs,275.724,603.523,764.273,timeout,0.008002,0.009656,0.010056,1.11031,0.023576
+xor15_sat.qdimacs,oom,timeout,timeout,timeout,0.093851,0.113626,0.162358,2.65751,0.012841
+xor15_unsat.qdimacs,oom,timeout,timeout,timeout,0.097278,0.113952,0.159985,2.671,0.031505
+xor20_sat.qdimacs,oom,timeout,timeout,timeout,2.84521,3.42165,5.19617,11.6591,0.014689
+xor20_unsat.qdimacs,oom,timeout,timeout,timeout,2.84522,3.43264,5.10742,10.4974,0.042098
+xor25_sat.qdimacs,oom,timeout,timeout,timeout,90.431,110.309,163.206,241.175,0.0165
+xor25_unsat.qdimacs,oom,timeout,timeout,timeout,90.3281,110.29,161.151,259.141,0.050949
+xor30_sat.qdimacs,oom,timeout,timeout,timeout,timeout,timeout,oom,timeout,0.018719
+xor30_unsat.qdimacs,oom,timeout,timeout,timeout,timeout,timeout,oom,timeout,0.063408
+xor60_sat.qdimacs,oom,timeout,timeout,stack overflow,timeout,timeout,timeout,stack overflow,0.029538
+xor60_unsat.qdimacs,oom,timeout,timeout,stack overflow,timeout,timeout,timeout,stack overflow,0.167152
+xor100_sat.qdimacs,oom,timeout,timeout,stack overflow,timeout,timeout,timeout,stack overflow,0.045896
+xor100_unsat.qdimacs,oom,timeout,timeout,stack overflow,timeout,timeout,timeout,stack overflow,0.531196
