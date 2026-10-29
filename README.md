@@ -29,9 +29,13 @@ Running `make` in `data/` will create `.qdimacs` instances of the domino game an
 ## StarExec results
 
 The file `StarExec_results.csv` contains the data from an evaluation of the naive solver and the search solver across the four code export target languages Standard ML, OCaml, Haskell, and Scala.
-Each solver was ran on the now-decommissioned University of Iowa StarExec instance against a range of different instances of the xor problem and the domino game with a 900s timeout and a 32GB memory limit.
+Each solver was run on the now-decommissioned University of Iowa StarExec instance against a range of different instances of the xor problem and the domino game with a 900s timeout and a 32GB memory limit.
 The result for each run is either an execution time in seconds, a timeout, a stack overflow, or an out-of-memory error.
 The state-of-the-art solver CAQE was also included as a reference point.
+
+We also evaluated our solvers and CAQE (without a preprocessor) on the QBFEVAL'22 benchmark set on StarExec with the same time and memory limits.
+The naive solver did not solve any instances, the search solver solved one instance (`hein_04_3x3-03.pg`) in all four target languages, and CAQE solved 329.
+The QBFEVAL'22 benchmark set is available for download (https://www.qbflib.org/index_eval.php), but is not included in this Zenodo artifact as we were unable to establish that all instances are covered by licenses permitting redistribution.
 
 ## Document Generation
 
